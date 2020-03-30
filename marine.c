@@ -579,6 +579,35 @@ WS_DLL_PUBLIC marine_result *marine_dissect_packet(int filter_id, unsigned char 
     return result;
 }
 
+
+WS_DLL_PUBLIC int compile_bpf(char *bpf, struct bpf_program *fcode, char *err_msg) {
+    pcap_t *pc;
+
+    pc = pcap_open_dead(DLT_EN10MB, MIN_PACKET_SIZE);
+    if (pc != NULL) {
+        struct bpf_program temp_fcode;
+        struct bpf_program *used_fcode;
+        int ret_value;
+
+        used_fcode = (fcode != NULL) ? fcode : &temp_fcode;
+        ret_value = pcap_compile(pc, used_fcode, bpf, 0, 0);
+
+        if (ret_value == -1) {
+             strcpy(err_msg, "Failed compiling the BPF");
+        }
+
+        if (fcode == NULL && ret_value == 0) {
+            pcap_freecode(used_fcode);
+        }
+
+        pcap_close(pc);
+        return ret_value;
+    }
+
+    return -1;
+}
+
+
 WS_DLL_PUBLIC int marine_add_filter(char *bpf, char *dfilter, char **fields, int fields_len, char *err_msg) {
     // TODO make the error codes consts
     struct bpf_program fcode;
@@ -588,15 +617,8 @@ WS_DLL_PUBLIC int marine_add_filter(char *bpf, char *dfilter, char **fields, int
 
     if (bpf != NULL) { // TODO add a function to validate bpfs
         has_bpf = TRUE;
-        pcap_t *pc;
-        pc = pcap_open_dead(DLT_EN10MB, MIN_PACKET_SIZE);
-        if (pc != NULL) {
-            if (pcap_compile(pc, &fcode, bpf, 0, 0) == -1) {
-                strcpy(err_msg, "Failed compiling the BPF");
-                pcap_close(pc);
-                return -1;
-            }
-            pcap_close(pc);
+        if (compile_bpf(bpf, &fcode, err_msg) == -1) {
+            return -1;
         }
     }
 
