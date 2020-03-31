@@ -584,7 +584,7 @@ int compile_bpf(char *bpf, struct bpf_program *fcode, char *err_msg) {
 
     pc = pcap_open_dead(DLT_EN10MB, MIN_PACKET_SIZE);
     if (pc == NULL) {
-        return -1;
+        return FALSE;
     }
     
     if (pcap_compile(pc, fcode, bpf, 0, 0) == -1) {
@@ -593,22 +593,22 @@ int compile_bpf(char *bpf, struct bpf_program *fcode, char *err_msg) {
         }
         
         pcap_close(pc);
-        return -1;
+        return FALSE;
     }
 
     pcap_close(pc);
-    return 0;
+    return TRUE;
 }
 
 WS_DLL_PUBLIC int validate_bpf(char *bpf) {
     struct bpf_program temp_fcode;
 
-    if (compile_bpf(bpf, &temp_fcode, NULL) == -1) {
-        return -1;
+    if (!compile_bpf(bpf, &temp_fcode, NULL)) {
+        return FALSE;
     }
 
     pcap_freecode(&temp_fcode);
-    return 0;
+    return TRUE;
 }
 
 WS_DLL_PUBLIC int marine_add_filter(char *bpf, char *dfilter, char **fields, int fields_len, char *err_msg) {
@@ -618,9 +618,9 @@ WS_DLL_PUBLIC int marine_add_filter(char *bpf, char *dfilter, char **fields, int
     output_fields_t *packet_output_fields = NULL;
     int has_bpf = FALSE;
 
-    if (bpf != NULL) { // TODO add a function to validate bpfs
+    if (bpf != NULL) {
         has_bpf = TRUE;
-        if (compile_bpf(bpf, &fcode, err_msg) == -1) {
+        if (!compile_bpf(bpf, &fcode, err_msg)) {
             return -1;
         }
     }
