@@ -579,31 +579,24 @@ WS_DLL_PUBLIC marine_result *marine_dissect_packet(int filter_id, unsigned char 
     return result;
 }
 
-int compile_bpf(char *bpf, struct bpf_program *fcode, char *err_msg) {
+int compile_bpf(char *bpf, struct bpf_program *fcode) {
     pcap_t *pc;
 
     pc = pcap_open_dead(DLT_EN10MB, MIN_PACKET_SIZE);
     if (pc == NULL) {
-        return FALSE;
+        return -1;
     }
     
-    if (pcap_compile(pc, fcode, bpf, 0, 0) == -1) {
-        if (err_msg != NULL) {
-            strcpy(err_msg, "Failed compiling the BPF");
-        }
-        
-        pcap_close(pc);
-        return FALSE;
-    }
-
+    int compile_status = pcap_compile(pc, fcode, bpf, 0, 0);
+    
     pcap_close(pc);
-    return TRUE;
+    return compile_status;
 }
 
 WS_DLL_PUBLIC int validate_bpf(char *bpf) {
     struct bpf_program temp_fcode;
 
-    if (!compile_bpf(bpf, &temp_fcode, NULL)) {
+    if (compile_bpf(bpf, &temp_fcode) != 0) {
         return FALSE;
     }
 
@@ -620,7 +613,8 @@ WS_DLL_PUBLIC int marine_add_filter(char *bpf, char *dfilter, char **fields, int
 
     if (bpf != NULL) {
         has_bpf = TRUE;
-        if (!compile_bpf(bpf, &fcode, err_msg)) {
+        if (compile_bpf(bpf, &fcode) != 0) {
+            strcpy(err_msg, "Failed compiling the BPF");
             return -1;
         }
     }
