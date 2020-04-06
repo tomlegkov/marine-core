@@ -619,7 +619,7 @@ int inner_compile_dfilter(char *dfilter, dfilter_t **dfcode, char *err_msg) {
     return compile_status;
 }
 
-WS_DLL_PUBLIC int validate_dfilter(char *dfilter) {
+WS_DLL_PUBLIC int validate_display_filter(char *dfilter) {
     dfilter_t *dfcode = NULL;
 
     if (!inner_compile_dfilter(dfilter, &dfcode, NULL)) {
