@@ -227,11 +227,40 @@ static GHashTable *packet_filters;
 static int *packet_filter_keys[4096];
 static gboolean prefs_loaded = FALSE;
 
+static perf_t optimize_perfs[] = {
+        "tcp.analyze_sequence_numbers:false",
+        "tcp.relative_sequence_numbers:false",
+        "tcp.track_bytes_in_flight:false",
+        "tcp.reassemble_out_of_order:false",
+        "tcp.check_checksum:false",
+};
+
+// Take from prefs_set_pref_e (prefs.h)
+static const char* const pref_errors[] = {
+        "succeeded", "syntax error", "preference doesn't exists", "preference used to be exist"
+};
 
 static void reset_epan_mem(capture_file *cf, epan_dissect_t *edt, gboolean tree, gboolean visual);
 
 inline static int is_only_bpf(const packet_filter* const filter) {
     return filter->has_bpf && filter->dfcode == NULL && filter->output_fields == NULL;
+}
+
+
+void set_preferences(perf_t* preferences, int num_of_prefs){
+    char* err;
+    for (int i = 0; i < num_of_prefs; ++i) {
+        prefs_set_pref_e  status  = prefs_set_pref(preferences[i], &err);
+        if (status != PREFS_SET_OK) {
+            printf("Couldn't override %s, use default value\n"
+                   "Error: %s\n", optimize_perfs[i], pref_errors[status]);
+
+            // The error that return from the function mostly NULL, and the really error is in the return value
+            if (err != NULL) {
+                printf("Inner error: %s", err);
+            }
+        }
+    }
 }
 
 static void format_field_values(output_fields_t *fields, gpointer field_index, gchar *value) {
@@ -809,10 +838,14 @@ WS_DLL_PUBLIC int init_marine(void) {
 
     wtap_init(TRUE);
 
+
     /* Register all dissectors */
     if (!epan_init(NULL, NULL, TRUE)) {
         return 1;
     }
+
+    int num_of_prefs = ARRAY_SIZE(optimize_perfs);
+    set_preferences(optimize_perfs, num_of_prefs);
 
     /* we register the plugin taps before the other taps because
        stats_tree taps plugins will be registered as tap listeners
@@ -852,6 +885,7 @@ WS_DLL_PUBLIC int init_marine(void) {
     marine_cf_open(&cfile);
 
     packet_filters = g_hash_table_new(g_int_hash, g_int_equal);
+
     return 0;
 }
 

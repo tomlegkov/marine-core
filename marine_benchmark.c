@@ -8,8 +8,6 @@
 #include <sys/resource.h>
 #include <zconf.h>
 
-#define ARRAY_SIZE(arr)     (sizeof(arr) / sizeof((arr)[0]))
-
 typedef struct {
     char *title;
     char *bpf;

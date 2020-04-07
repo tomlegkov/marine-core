@@ -4,6 +4,12 @@
 #define WIRESHARK_MARINE_H
 
 #include <glib.h>
+#define ARRAY_SIZE(arr)     (sizeof(arr) / sizeof((arr)[0]))
+
+// The options must be mutable so need to create them as this
+// prefs_set_pref change the string, so we have to pass a mutable string
+// By: char* prefs[] - it will create an hardcoded literal in the program binary and wont work (segv)
+typedef char perf_t[1024];
 
 typedef struct {
     char *output;
