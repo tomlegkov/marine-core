@@ -228,11 +228,29 @@ static int *packet_filter_keys[4096];
 static gboolean prefs_loaded = FALSE;
 
 static perf_t optimize_perfs[] = {
+        //IPv4
+        "ip.summary_in_tree:false",
+        "ip.check_checksum:false",
+        "ip.use_geoip:false",
+
+        //IPv6
+        "ipv6.summary_in_tree:false",
+        "ipv6.use_geoip:false",
+
+        // TCP
         "tcp.analyze_sequence_numbers:false",
         "tcp.relative_sequence_numbers:false",
         "tcp.track_bytes_in_flight:false",
         "tcp.reassemble_out_of_order:false",
         "tcp.check_checksum:false",
+        "tcp.tcp_summary_in_tree:false",
+        "tcp.desegment_tcp_streams:false", // Check again on this one
+        "tcp.display_process_info_from_ipfix:false",
+
+        //UDP
+        "udp.summary_in_tree:false",
+        "udp.process_info:false"
+
 };
 
 // Take from prefs_set_pref_e (prefs.h)
@@ -247,7 +265,7 @@ inline static int is_only_bpf(const packet_filter* const filter) {
 }
 
 
-void set_preferences(perf_t* preferences, int num_of_prefs){
+void set_preferences(perf_t* preferences, int num_of_prefs) {
     char* err;
     for (int i = 0; i < num_of_prefs; ++i) {
         prefs_set_pref_e  status  = prefs_set_pref(preferences[i], &err);
@@ -846,7 +864,6 @@ WS_DLL_PUBLIC int init_marine(void) {
 
     int num_of_prefs = ARRAY_SIZE(optimize_perfs);
     set_preferences(optimize_perfs, num_of_prefs);
-
     /* we register the plugin taps before the other taps because
        stats_tree taps plugins will be registered as tap listeners
        by stats_tree_stat.c and need to registered before that */
