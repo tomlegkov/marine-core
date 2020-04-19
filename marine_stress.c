@@ -21,7 +21,7 @@ void random_ip(char *buf) {
     *(buf++) = 0x45;
     *(buf++) = 0;
     *(buf++) = 0;
-    *(buf++) = 14;
+    *(buf++) = 0x0e;
     *(buf++) = 0;
     *(buf++) = 0;
     *(buf++) = 0;
