@@ -85,7 +85,7 @@ static frame_data ref_frame;
 static frame_data prev_dis_frame;
 static frame_data prev_cap_frame;
 
-static guint32 epan_auto_reset_count = 20000; // TODO make this configurable
+static guint32 epan_auto_reset_count = 100000; // TODO make this configurable
 static gboolean epan_auto_reset = TRUE;
 
 const unsigned int ETHERNET_ENCAP = 1;
@@ -697,7 +697,8 @@ marine_epan_new(capture_file *cf) {
 }
 
 void
-marine_cf_open(capture_file *cf) {
+marine_cf_open(capture_file *cf)
+{
     wtap *wth;
 
     wth = marine_wtap_open_offline();
@@ -837,6 +838,16 @@ WS_DLL_PUBLIC guint32 get_epan_auto_reset_count(void) {
     return epan_auto_reset_count;
 }
 
+void remove_key(void* key, void* value, void* user_data) {
+    wmem_map_t* map = (wmem_map_t*) user_data;
+    wmem_map_remove(map, key);
+    wmem_free(wmem_epan_scope(), value);
+}
+
+void clear_wmem_map(wmem_map_t* map) {
+    wmem_map_foreach(map, remove_key, map);
+}
+
 static void reset_epan_mem(capture_file *cf, epan_dissect_t *edt, gboolean tree, gboolean visual) {
     if (!epan_auto_reset || (cf->count < epan_auto_reset_count))
         return;
@@ -849,4 +860,8 @@ static void reset_epan_mem(capture_file *cf, epan_dissect_t *edt, gboolean tree,
     cf->epan = marine_epan_new(cf);
     epan_dissect_init(edt, cf->epan, tree, visual);
     cf->count = 0;
+    // Sadly, wireshark caches ether name resolving even when resolving is disabled
+    // (Practically caching hex representation of macs)
+    // So we clear its cache ourselves
+    clear_wmem_map(get_eth_hashtable());
 }
