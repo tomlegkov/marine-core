@@ -5,8 +5,8 @@
 #include <time.h>
 
 void fill_random(char *buf, size_t len) {
-    for (size_t i = 0; i + 3 < len; i += 4) {
-        *(int *) (buf + i) = rand();
+    for (size_t i = 0; i < len / sizeof(int); ++i) {
+        *(((int *) buf) + i) = rand();
     }
 }
 
