@@ -247,7 +247,7 @@ static perf_t optimize_perfs[] = {
         "tcp.desegment_tcp_streams:false", // Check again on this one
         "tcp.display_process_info_from_ipfix:false",
 
-        //UDP
+        // UDP
         "udp.summary_in_tree:false",
         "udp.process_info:false"
 
@@ -265,20 +265,23 @@ inline static int is_only_bpf(const packet_filter* const filter) {
 }
 
 
-void set_preferences(perf_t* preferences, int num_of_prefs) {
+int set_preferences(perf_t* preferences, int num_of_prefs) {
     char* err;
+    int has_been_set = num_of_prefs;
     for (int i = 0; i < num_of_prefs; ++i) {
         prefs_set_pref_e  status  = prefs_set_pref(preferences[i], &err);
         if (status != PREFS_SET_OK) {
             printf("Couldn't override %s, use default value\n"
-                   "Error: %s\n", optimize_perfs[i], pref_errors[status]);
+                   "Error: %s\n", preferences[i], pref_errors[status]);
 
             // The error that return from the function mostly NULL, and the really error is in the return value
             if (err != NULL) {
                 printf("Inner error: %s", err);
             }
+            --has_been_set;
         }
     }
+    return has_been_set;
 }
 
 static void format_field_values(output_fields_t *fields, gpointer field_index, gchar *value) {
@@ -856,7 +859,6 @@ WS_DLL_PUBLIC int init_marine(void) {
 
     wtap_init(TRUE);
 
-
     /* Register all dissectors */
     if (!epan_init(NULL, NULL, TRUE)) {
         return 1;
@@ -902,7 +904,6 @@ WS_DLL_PUBLIC int init_marine(void) {
     marine_cf_open(&cfile);
 
     packet_filters = g_hash_table_new(g_int_hash, g_int_equal);
-
     return 0;
 }
 
