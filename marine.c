@@ -244,7 +244,6 @@ static perf_t optimize_perfs[] = {
         "tcp.reassemble_out_of_order:false",
         "tcp.check_checksum:false",
         "tcp.tcp_summary_in_tree:false",
-        "tcp.desegment_tcp_streams:false", // Check again on this one
         "tcp.display_process_info_from_ipfix:false",
 
         // UDP
