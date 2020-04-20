@@ -65,8 +65,8 @@ int report_current_mem(void) {
 }
 
 #define DATA_LEN 800
-#define TOTAL_PACKETS (1U << 22U)
 #define CHUNK (1U << 19U)
+#define TOTAL_PACKETS (CHUNK << 3U)
 
 int main(void) {
     srand(time(NULL));
