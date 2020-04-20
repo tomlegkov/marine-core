@@ -13,6 +13,7 @@ typedef struct {
     char *bpf;
     char *dfilter;
     char **fields;
+    int num_of_fields;
 } benchmark_case;
 
 typedef struct {
@@ -145,13 +146,13 @@ int main(int argc, char *argv[]) {
     };
 
     benchmark_case cases[] = {
-            {"Benchmark with BPF",                                            bpf, NULL,    NULL},
-            {"Benchmark with Display filter",         NULL,                        dfilter, NULL},
-            {"Benchmark with BPF and Display filter",                         bpf, dfilter, NULL},
-            {"Benchmark with three extracted fields", NULL,                        NULL,    three_fields},
-            {"Benchmark with eight extracted fields", NULL,                        NULL,    eight_fields},
-            {"Benchmark with BPF, Display filter and three extracted fields", bpf, dfilter, three_fields},
-            {"Benchmark with BPF, Display filter and eight extracted fields", bpf, dfilter, eight_fields},
+            {"Benchmark with BPF",                                            bpf, NULL,    NULL, 0},
+            {"Benchmark with Display filter",         NULL,                        dfilter, NULL, 0},
+            {"Benchmark with BPF and Display filter",                         bpf, dfilter, NULL, 0},
+            {"Benchmark with three extracted fields", NULL,                        NULL,    three_fields, 3},
+            {"Benchmark with eight extracted fields", NULL,                        NULL,    eight_fields, 8},
+            {"Benchmark with BPF, Display filter and three extracted fields", bpf, dfilter, three_fields, 3},
+            {"Benchmark with BPF, Display filter and eight extracted fields", bpf, dfilter, eight_fields, 8},
     };
 
     int num_of_cases = ARRAY_SIZE(cases);
@@ -164,11 +165,10 @@ int main(int argc, char *argv[]) {
 
     for (int case_index = 0; case_index < num_of_cases; ++case_index) {
         benchmark_case current = cases[case_index];
-        int num_of_fields = (current.fields != NULL) ? ARRAY_SIZE(current.fields) : 0;
         packet *start_packet = packets + (packet_per_case * case_index);
 
         print_title(current.title);
-        benchmark(start_packet, packet_per_case, current.bpf, current.dfilter, current.fields, num_of_fields);
+        benchmark(start_packet, packet_per_case, current.bpf, current.dfilter, current.fields, current.num_of_fields);
     }
 
     size_t memory_end = get_current_rss();
