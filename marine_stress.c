@@ -68,11 +68,8 @@ int report_current_mem(void) {
 #define TOTAL_PACKETS (1U << 22U)
 #define CHUNK (1U << 19U)
 
-int main(int argc, char **argv) {
+int main(void) {
     srand(time(NULL));
-    if (argv != NULL) {
-        printf("argc: %d\n", argc);
-    }
     char *fields[] = {"eth.src", "eth.dst", "tcp.srcport"};
     char err_msg[512] = {0};
     report_current_mem();
