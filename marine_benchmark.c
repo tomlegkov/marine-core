@@ -149,10 +149,10 @@ int main(int argc, char *argv[]) {
             {"Benchmark with BPF",                                            bpf, NULL,    NULL, 0},
             {"Benchmark with Display filter",         NULL,                        dfilter, NULL, 0},
             {"Benchmark with BPF and Display filter",                         bpf, dfilter, NULL, 0},
-            {"Benchmark with three extracted fields", NULL,                        NULL,    three_fields, 3},
-            {"Benchmark with eight extracted fields", NULL,                        NULL,    eight_fields, 8},
-            {"Benchmark with BPF, Display filter and three extracted fields", bpf, dfilter, three_fields, 3},
-            {"Benchmark with BPF, Display filter and eight extracted fields", bpf, dfilter, eight_fields, 8},
+            {"Benchmark with three extracted fields", NULL,                        NULL,    three_fields, ARRAY_SIZE(three_fields)},
+            {"Benchmark with eight extracted fields", NULL,                        NULL,    eight_fields, ARRAY_SIZE(eight_fields)},
+            {"Benchmark with BPF, Display filter and three extracted fields", bpf, dfilter, three_fields, ARRAY_SIZE(three_fields)},
+            {"Benchmark with BPF, Display filter and eight extracted fields", bpf, dfilter, eight_fields, ARRAY_SIZE(eight_fields)},
     };
 
     int num_of_cases = ARRAY_SIZE(cases);
