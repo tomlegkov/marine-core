@@ -254,7 +254,7 @@ static marine_pref_t optimize_perfs[] = {
 
 // Take from prefs_set_pref_e (prefs.h)
 static const char* const pref_errors[] = {
-        "succeeded", "syntax error", "preference doesn't exists", "preference used to be exist"
+        "succeeded", "syntax error", "preference doesn't exists", "preference is obselete"
 };
 
 static void reset_epan_mem(capture_file *cf, epan_dissect_t *edt, gboolean tree, gboolean visual);
@@ -266,7 +266,7 @@ inline static int is_only_bpf(const packet_filter* const filter) {
 
 int set_preferences(marine_pref_t* preferences, int num_of_prefs) {
     char* err;
-    int has_been_set = num_of_prefs;
+    int failed = 0;
     for (int i = 0; i < num_of_prefs; ++i) {
         prefs_set_pref_e  status  = prefs_set_pref(preferences[i], &err);
         if (status != PREFS_SET_OK) {
@@ -277,10 +277,10 @@ int set_preferences(marine_pref_t* preferences, int num_of_prefs) {
             if (err != NULL) {
                 fprintf(stderr,"Inner error: %s", err);
             }
-            --has_been_set;
+            ++failed;
         }
     }
-    return has_been_set;
+    return failed;
 }
 
 static void format_field_values(output_fields_t *fields, gpointer field_index, gchar *value) {
