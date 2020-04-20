@@ -60,8 +60,10 @@ int report_mem(size_t rss) {
     return printf("MEMORY: %.2lfMB\n", rss / 1024.0 / 1024.0);
 }
 
-int report_current_mem(void) {
-    return report_mem(get_current_rss());
+size_t report_current_mem(void) {
+    size_t rss = get_current_rss();
+    report_mem(rss);
+    return rss;
 }
 
 #define DATA_LEN 800
@@ -84,14 +86,12 @@ int main(void) {
         return -1;
     }
     char data[DATA_LEN] = {0};
-    size_t rss = get_current_rss();
-    report_mem(rss);
     size_t prev_rss;
+    size_t rss = report_current_mem();
     for (size_t i = 1; i < TOTAL_PACKETS; ++i) {
         if (i % CHUNK == 0) {
             prev_rss = rss;
-            rss = get_current_rss();
-            report_mem(rss);
+            rss = report_current_mem();
             printf("bytes-per-packet: %.2lf\n", ((double) (rss - prev_rss)) / CHUNK);
         }
         fill_random(data, DATA_LEN);
