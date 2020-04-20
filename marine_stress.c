@@ -65,6 +65,7 @@ int report_current_mem(void) {
 }
 
 #define DATA_LEN 800
+#define TOTAL_PACKETS (1U << 22U)
 #define CHUNK (1U << 19U)
 
 int main(int argc, char **argv) {
@@ -89,7 +90,7 @@ int main(int argc, char **argv) {
     size_t rss = get_current_rss();
     report_mem(rss);
     size_t prev_rss;
-    for (size_t i = 1; i < (32U << 20U); ++i) {
+    for (size_t i = 1; i < TOTAL_PACKETS; ++i) {
         if (i % CHUNK == 0) {
             printf("LOOP %ld\n", i);
             prev_rss = rss;
