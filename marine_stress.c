@@ -80,7 +80,7 @@ int main(void) {
     int filter_id = marine_add_filter("ether[0] & 1 == 0", "frame[0] & 2", fields,
                                       3, err_msg);
     if (filter_id < 0) {
-        printf("Could not add filter: %s", err_msg);
+        fprintf(stderr, "Could not add filter: %s\n", err_msg);
         return -1;
     }
     char data[DATA_LEN] = {0};
