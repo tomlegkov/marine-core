@@ -863,7 +863,7 @@ WS_DLL_PUBLIC int init_marine(void) {
         return 1;
     }
 
-    set_preferences(optimize_perfs, ARRAY_SIZE(optimize_perfs);
+    set_preferences(optimize_perfs, ARRAY_SIZE(optimize_perfs));
     /* we register the plugin taps before the other taps because
        stats_tree taps plugins will be registered as tap listeners
        by stats_tree_stat.c and need to registered before that */
