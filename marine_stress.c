@@ -89,7 +89,6 @@ int main(void) {
     size_t prev_rss;
     for (size_t i = 1; i < TOTAL_PACKETS; ++i) {
         if (i % CHUNK == 0) {
-            printf("LOOP %ld\n", i);
             prev_rss = rss;
             rss = get_current_rss();
             report_mem(rss);
