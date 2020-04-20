@@ -227,7 +227,7 @@ static GHashTable *packet_filters;
 static int *packet_filter_keys[4096];
 static gboolean prefs_loaded = FALSE;
 
-static perf_t optimize_perfs[] = {
+static marine_pref_t optimize_perfs[] = {
         //IPv4
         "ip.summary_in_tree:false",
         "ip.check_checksum:false",
@@ -264,7 +264,7 @@ inline static int is_only_bpf(const packet_filter* const filter) {
 }
 
 
-int set_preferences(perf_t* preferences, int num_of_prefs) {
+int set_preferences(marine_pref_t* preferences, int num_of_prefs) {
     char* err;
     int has_been_set = num_of_prefs;
     for (int i = 0; i < num_of_prefs; ++i) {
@@ -863,8 +863,7 @@ WS_DLL_PUBLIC int init_marine(void) {
         return 1;
     }
 
-    int num_of_prefs = ARRAY_SIZE(optimize_perfs);
-    set_preferences(optimize_perfs, num_of_prefs);
+    set_preferences(optimize_perfs, ARRAY_SIZE(optimize_perfs);
     /* we register the plugin taps before the other taps because
        stats_tree taps plugins will be registered as tap listeners
        by stats_tree_stat.c and need to registered before that */
