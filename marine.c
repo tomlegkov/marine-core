@@ -270,12 +270,12 @@ int set_preferences(perf_t* preferences, int num_of_prefs) {
     for (int i = 0; i < num_of_prefs; ++i) {
         prefs_set_pref_e  status  = prefs_set_pref(preferences[i], &err);
         if (status != PREFS_SET_OK) {
-            printf("Couldn't override %s, use default value\n"
+            fprintf(stderr,"Couldn't override %s, use default value\n"
                    "Error: %s\n", preferences[i], pref_errors[status]);
 
             // The error that return from the function mostly NULL, and the really error is in the return value
             if (err != NULL) {
-                printf("Inner error: %s", err);
+                fprintf(stderr,"Inner error: %s", err);
             }
             --has_been_set;
         }
