@@ -697,8 +697,7 @@ marine_epan_new(capture_file *cf) {
 }
 
 void
-marine_cf_open(capture_file *cf)
-{
+marine_cf_open(capture_file *cf) {
     wtap *wth;
 
     wth = marine_wtap_open_offline();
