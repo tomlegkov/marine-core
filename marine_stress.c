@@ -70,7 +70,7 @@ int report_current_mem(void) {
 
 int main(void) {
     srand(time(NULL));
-    char *fields[] = {"eth.src", "eth.dst", "tcp.srcport"};
+    char *fields[] = {"eth.src", "ip.dst", "tcp.srcport"};
     char err_msg[512] = {0};
     report_current_mem();
     printf("Loading marine...\n");
