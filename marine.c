@@ -252,9 +252,9 @@ static marine_pref_t optimize_perfs[] = {
 
 };
 
-// Take from prefs_set_pref_e (prefs.h)
+// Taken from prefs_set_pref_e (prefs.h)
 static const char* const pref_errors[] = {
-        "succeeded", "syntax error", "preference doesn't exists", "preference is obselete"
+        "succeeded", "syntax error", "preference doesn't exist", "preference is obselete"
 };
 
 static void reset_epan_mem(capture_file *cf, epan_dissect_t *edt, gboolean tree, gboolean visual);
@@ -264,7 +264,7 @@ inline static int is_only_bpf(const packet_filter* const filter) {
 }
 
 
-int set_preferences(marine_pref_t* preferences, int num_of_prefs) {
+WS_DLL_PUBLIC int set_preferences(marine_pref_t* preferences, int num_of_prefs) {
     char* err;
     int failed = 0;
     for (int i = 0; i < num_of_prefs; ++i) {
@@ -275,9 +275,9 @@ int set_preferences(marine_pref_t* preferences, int num_of_prefs) {
 
             // The error that return from the function mostly NULL, and the really error is in the return value
             if (err != NULL) {
-                fprintf(stderr,"Inner error: %s", err);
+                fprintf(stderr,"Internal error: %s", err);
             }
-            ++failed;
+            failed++;
         }
     }
     return failed;
