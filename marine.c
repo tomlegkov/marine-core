@@ -184,6 +184,9 @@ static frame_data prev_cap_frame;
 static guint32 epan_auto_reset_count = 20000; // TODO make this configurable
 static gboolean epan_auto_reset = TRUE;
 
+const unsigned int ethernet_encap = 1;
+const unsigned int wifi_encap = 23;
+
 /*
  * The way the packet decode is to be written.
  */
@@ -496,7 +499,7 @@ marine_process_packet(capture_file *cf, epan_dissect_t *edt, packet_filter *filt
 }
 
 static int
-marine_inner_dissect_packet(capture_file *cf, packet_filter *filter, const unsigned char *data, int len, char *output) {
+marine_inner_dissect_packet(capture_file *cf, packet_filter *filter, const unsigned char *data, int len, unsigned int encap, char *output) {
     wtap_rec rec;
     Buffer buf;
     epan_dissect_t *edt = NULL;
@@ -526,7 +529,7 @@ marine_inner_dissect_packet(capture_file *cf, packet_filter *filter, const unsig
     (&rec)->presence_flags = WTAP_HAS_CAP_LEN;
     (&rec)->rec_header.packet_header.caplen = len;
     (&rec)->rec_header.packet_header.len = len;
-    (&rec)->rec_header.packet_header.pkt_encap = 1;
+    (&rec)->rec_header.packet_header.pkt_encap = encap;
     (&rec)->rec_header.ft_specific_header.record_len = len;
     (&rec)->rec_header.ft_specific_header.record_type = len;
     (&rec)->rec_header.syscall_header.record_type = len;
@@ -558,7 +561,7 @@ marine_inner_dissect_packet(capture_file *cf, packet_filter *filter, const unsig
     return passed;
 }
 
-WS_DLL_PUBLIC marine_result *marine_dissect_packet(int filter_id, unsigned char *data, int len) {
+WS_DLL_PUBLIC marine_result *marine_dissect_packet(int filter_id, unsigned char *data, int len, unsigned int encap) {
     marine_result *result = (marine_result *) malloc(sizeof(marine_result));
     result->output = NULL;
 
@@ -568,7 +571,7 @@ WS_DLL_PUBLIC marine_result *marine_dissect_packet(int filter_id, unsigned char 
         int *key = packet_filter_keys[filter_id];
         packet_filter *filter = (packet_filter *) g_hash_table_lookup(packet_filters, key);
         char *output = filter->output_fields == NULL ? NULL : (char *) g_malloc0(4096); // TODO export to const
-        int passed = marine_inner_dissect_packet(&cfile, filter, data, len, output);
+        int passed = marine_inner_dissect_packet(&cfile, filter, data, len, encap, output);
         if (passed) {
             result->result = 1;
             result->output = output;
