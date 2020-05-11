@@ -224,7 +224,7 @@ typedef struct {
     struct bpf_program fcode;
     dfilter_t *dfcode;
     output_fields_t *output_fields;
-    unsigned int wtap_encap;
+    int wtap_encap;
 } packet_filter;
 
 
@@ -587,10 +587,10 @@ WS_DLL_PUBLIC marine_result *marine_dissect_packet(int filter_id, unsigned char 
     return result;
 }
 
-int compile_bpf(char *bpf, struct bpf_program *fcode) {
+int compile_bpf(char *bpf, struct bpf_program *fcode, int wtap_encap) {
     pcap_t *pc;
 
-    pc = pcap_open_dead(DLT_EN10MB, MIN_PACKET_SIZE);
+    pc = pcap_open_dead(wtap_wtap_encap_to_pcap_encap(wtap_encap), MIN_PACKET_SIZE);
     if (pc == NULL) {
         return -1;
     }
@@ -601,10 +601,10 @@ int compile_bpf(char *bpf, struct bpf_program *fcode) {
     return compile_status;
 }
 
-WS_DLL_PUBLIC int validate_bpf(char *bpf) {
+WS_DLL_PUBLIC int validate_bpf(char *bpf, int wtap_encap) {
     struct bpf_program temp_fcode;
 
-    if (compile_bpf(bpf, &temp_fcode) != 0) {
+    if (compile_bpf(bpf, &temp_fcode, wtap_encap) != 0) {
         return FALSE;
     }
 
@@ -671,7 +671,7 @@ WS_DLL_PUBLIC int validate_fields(char **fields, size_t fields_len) {
     return TRUE;
 }
 
-WS_DLL_PUBLIC int marine_add_filter(char *bpf, char *dfilter, char **fields, size_t fields_len, unsigned int wtap_encap, char **err_msg) {
+WS_DLL_PUBLIC int marine_add_filter(char *bpf, char *dfilter, char **fields, size_t fields_len, int wtap_encap, char **err_msg) {
     // TODO make the error codes consts
     struct bpf_program fcode;
     dfilter_t *dfcode = NULL;
@@ -680,7 +680,7 @@ WS_DLL_PUBLIC int marine_add_filter(char *bpf, char *dfilter, char **fields, siz
 
     if (bpf != NULL) {
         has_bpf = TRUE;
-        if (compile_bpf(bpf, &fcode) != 0) {
+        if (compile_bpf(bpf, &fcode, wtap_encap) != 0) {
             *err_msg = g_strdup("Failed compiling the BPF");
             return -1;
         }
