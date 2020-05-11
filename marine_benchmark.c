@@ -8,14 +8,12 @@
 #include <sys/resource.h>
 #include <zconf.h>
 
-#define ARRAY_SIZE(arr)     (sizeof(arr) / sizeof((arr)[0]))
-
 typedef struct {
     char *title;
     char *bpf;
     char *dfilter;
     char **fields;
-    size_t fields_len;
+    size_t num_of_fields;
 } benchmark_case;
 
 typedef struct {
@@ -150,7 +148,7 @@ int main(int argc, char *argv[]) {
 
     benchmark_case cases[] = {
             {"Benchmark with BPF",                                            bpf, NULL,    NULL, 0},
-            {"Benchmark with Display filter",         NULL,                        dfilter, NULL, 0},
+            {"Benchmark with Display filter",         NULL,                        dfilter, NULL, 0 },
             {"Benchmark with BPF and Display filter",                         bpf, dfilter, NULL, 0},
             {"Benchmark with three extracted fields", NULL,                        NULL,    three_fields, ARRAY_SIZE(three_fields)},
             {"Benchmark with eight extracted fields", NULL,                        NULL,    eight_fields, ARRAY_SIZE(eight_fields)},
@@ -171,7 +169,7 @@ int main(int argc, char *argv[]) {
         packet *start_packet = packets + (packet_per_case * case_index);
 
         print_title(current.title);
-        benchmark(start_packet, packet_per_case, current.bpf, current.dfilter, current.fields, current.fields_len);
+        benchmark(start_packet, packet_per_case, current.bpf, current.dfilter, current.fields, current.num_of_fields);
     }
 
     size_t memory_end = get_current_rss();
