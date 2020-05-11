@@ -77,7 +77,7 @@ int load_cap(char *file, packet **packets, char errbuff[PCAP_ERRBUF_SIZE]) {
 
 void benchmark(packet packets[], int packet_len, char *bpf, char *display_filter, char *fields[], int fields_len) {
     char *err_msg;
-    int filter_id = marine_add_filter(bpf, display_filter, fields, fields_len, &err_msg);
+    int filter_id = marine_add_filter(bpf, display_filter, fields, fields_len, ETHERNET_ENCAP, &err_msg);
     struct timespec start_time, end_time;
 
 
@@ -91,7 +91,7 @@ void benchmark(packet packets[], int packet_len, char *bpf, char *display_filter
     clock_gettime(CLOCK_MONOTONIC_RAW, &start_time);
     for (int i = 0; i < packet_len; ++i) {
         packet p = packets[i];
-        marine_result *result = marine_dissect_packet(filter_id, (char *) p.data, p.header->len, ethernet_encap);
+        marine_result *result = marine_dissect_packet(filter_id, (char *) p.data, p.header->len);
         assert(result->result == 1);
         marine_free(result);
     }

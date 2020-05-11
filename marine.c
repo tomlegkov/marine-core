@@ -64,6 +64,7 @@
 #include <version_info.h>
 #include <wiretap/wtap_opttypes.h>
 #include <wiretap/pcapng.h>
+#include <wiretap/pcap-encap.h>
 
 #include "globals.h"
 #include <epan/timestamp.h>
@@ -184,8 +185,8 @@ static frame_data prev_cap_frame;
 static guint32 epan_auto_reset_count = 20000; // TODO make this configurable
 static gboolean epan_auto_reset = TRUE;
 
-const unsigned int ethernet_encap = 1;
-const unsigned int wifi_encap = 23;
+const unsigned int ETHERNET_ENCAP = 1;
+const unsigned int WIFI_ENCAP = 23;
 
 /*
  * The way the packet decode is to be written.
@@ -223,6 +224,7 @@ typedef struct {
     struct bpf_program fcode;
     dfilter_t *dfcode;
     output_fields_t *output_fields;
+    unsigned int wtap_encap;
 } packet_filter;
 
 
@@ -499,7 +501,7 @@ marine_process_packet(capture_file *cf, epan_dissect_t *edt, packet_filter *filt
 }
 
 static int
-marine_inner_dissect_packet(capture_file *cf, packet_filter *filter, const unsigned char *data, int len, unsigned int encap, char *output) {
+marine_inner_dissect_packet(capture_file *cf, packet_filter *filter, const unsigned char *data, int len, char *output) {
     wtap_rec rec;
     Buffer buf;
     epan_dissect_t *edt = NULL;
@@ -529,7 +531,7 @@ marine_inner_dissect_packet(capture_file *cf, packet_filter *filter, const unsig
     (&rec)->presence_flags = WTAP_HAS_CAP_LEN;
     (&rec)->rec_header.packet_header.caplen = len;
     (&rec)->rec_header.packet_header.len = len;
-    (&rec)->rec_header.packet_header.pkt_encap = encap;
+    (&rec)->rec_header.packet_header.pkt_encap = filter->wtap_encap;
     (&rec)->rec_header.ft_specific_header.record_len = len;
     (&rec)->rec_header.ft_specific_header.record_type = len;
     (&rec)->rec_header.syscall_header.record_type = len;
@@ -561,7 +563,7 @@ marine_inner_dissect_packet(capture_file *cf, packet_filter *filter, const unsig
     return passed;
 }
 
-WS_DLL_PUBLIC marine_result *marine_dissect_packet(int filter_id, unsigned char *data, int len, unsigned int encap) {
+WS_DLL_PUBLIC marine_result *marine_dissect_packet(int filter_id, unsigned char *data, int len) {
     marine_result *result = (marine_result *) malloc(sizeof(marine_result));
     result->output = NULL;
 
@@ -571,7 +573,7 @@ WS_DLL_PUBLIC marine_result *marine_dissect_packet(int filter_id, unsigned char 
         int *key = packet_filter_keys[filter_id];
         packet_filter *filter = (packet_filter *) g_hash_table_lookup(packet_filters, key);
         char *output = filter->output_fields == NULL ? NULL : (char *) g_malloc0(4096); // TODO export to const
-        int passed = marine_inner_dissect_packet(&cfile, filter, data, len, encap, output);
+        int passed = marine_inner_dissect_packet(&cfile, filter, data, len, output);
         if (passed) {
             result->result = 1;
             result->output = output;
@@ -669,7 +671,7 @@ WS_DLL_PUBLIC int validate_fields(char **fields, size_t fields_len) {
     return TRUE;
 }
 
-WS_DLL_PUBLIC int marine_add_filter(char *bpf, char *dfilter, char **fields, size_t fields_len, char **err_msg) {
+WS_DLL_PUBLIC int marine_add_filter(char *bpf, char *dfilter, char **fields, size_t fields_len, unsigned int wtap_encap, char **err_msg) {
     // TODO make the error codes consts
     struct bpf_program fcode;
     dfilter_t *dfcode = NULL;
@@ -708,6 +710,7 @@ WS_DLL_PUBLIC int marine_add_filter(char *bpf, char *dfilter, char **fields, siz
     filter->fcode = fcode;
     filter->dfcode = dfcode;
     filter->output_fields = packet_output_fields;
+    filter->wtap_encap = wtap_encap;
     g_hash_table_insert(packet_filters, key, filter);
     packet_filter_keys[size] = key;
     return size;
