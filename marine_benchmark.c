@@ -148,7 +148,7 @@ int main(int argc, char *argv[]) {
 
     benchmark_case cases[] = {
             {"Benchmark with BPF",                                            bpf, NULL,    NULL, 0},
-            {"Benchmark with Display filter",         NULL,                        dfilter, NULL, 0 },
+            {"Benchmark with Display filter",         NULL,                        dfilter, NULL, 0},
             {"Benchmark with BPF and Display filter",                         bpf, dfilter, NULL, 0},
             {"Benchmark with three extracted fields", NULL,                        NULL,    three_fields, ARRAY_SIZE(three_fields)},
             {"Benchmark with eight extracted fields", NULL,                        NULL,    eight_fields, ARRAY_SIZE(eight_fields)},
