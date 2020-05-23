@@ -719,10 +719,6 @@ marine_cf_open(capture_file *cf) {
     cf->provider.prev_cap = NULL;
     epan_free(cf->epan);
     cf->epan = marine_epan_new(cf);
-
-    wtap_set_cb_new_ipv4(cf->provider.wth, add_ipv4_name);
-    wtap_set_cb_new_ipv6(cf->provider.wth, (wtap_new_ipv6_callback_t) add_ipv6_name);
-    wtap_set_cb_new_secrets(cf->provider.wth, secrets_wtap_callback);
 }
 
 WS_DLL_PUBLIC int init_marine(void) {
