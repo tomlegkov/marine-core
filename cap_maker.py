@@ -33,7 +33,10 @@ def write_cap(file_path: str, packets: List[bytes], pcap_header: bytes):
 
 
 def create_packet(
-    packet_layer12: Packet, protocol: Union[Type[tcp.TCP], Type[udp.UDP]], src_port: int, dst_port: int
+    packet_layer12: Packet,
+    protocol: Union[Type[tcp.TCP], Type[udp.UDP]],
+    src_port: int,
+    dst_port: int,
 ) -> bytes:
     protocol_number = ip.IP_PROTO_TCP if protocol == tcp.TCP else ip.IP_PROTO_UDP
     packet = (
@@ -45,7 +48,9 @@ def create_packet(
     return packet.bin()
 
 
-def create_conversation(packet_layer12: Packet, protocol: Union[Type[tcp.TCP], Type[udp.UDP]]) -> Iterator[bytes]:
+def create_conversation(
+    packet_layer12: Packet, protocol: Union[Type[tcp.TCP], Type[udp.UDP]]
+) -> Iterator[bytes]:
     src_port = random.choice(PORTS)
     dst_port = random.choice(PORTS)
     for p in range(PACKETS_PER_CONVERSATION // 2):
@@ -53,33 +58,37 @@ def create_conversation(packet_layer12: Packet, protocol: Union[Type[tcp.TCP], T
         yield create_packet(packet_layer12, protocol, dst_port, src_port)
 
 
+def generate_cap_file(
+    packet_base: Packet, conversation_count: int, cap_header: bytes, cap_name: str
+):
+    packets: List[bytes] = []
+    for _ in range(conversation_count // 2):
+        packets.extend(create_conversation(packet_base, tcp.TCP))
+        packets.extend(create_conversation(packet_base, udp.UDP))
+
+    random.shuffle(packets)
+    write_cap(cap_name, packets, cap_header)
+
+
 if __name__ == "__main__":
     packets: List[bytes] = []
 
     ethernet_base = ethernet.Ethernet(src_s=SRC_MAC, dst_s=DST_MAC)
-    for _ in range(CONVERSATIONS // 2):
-        packets.extend(create_conversation(ethernet_base, tcp.TCP))
-        packets.extend(create_conversation(ethernet_base, udp.UDP))
-
-    random.shuffle(packets)
-    write_cap("ethernet_benchmark.cap", packets, ETHERNET_PCAP_HEADER)
-
-    packets = []
-    radiotap_base = (
-            radiotap.Radiotap()
-            + ieee80211.IEEE80211(framectl=0x8801)
-            + ieee80211.IEEE80211.Dataframe(sec_param=None)
-            + llc.LLC(
-                dsap=170, ssap=170, ctrl=3, snap=int.to_bytes(llc.LLC_TYPE_IP, 5, "big")
-            )
+    generate_cap_file(
+        ethernet_base, CONVERSATIONS, ETHERNET_PCAP_HEADER, "ethernet_benchmark.cap"
     )
-    for _ in range(CONVERSATIONS // 2):
-        packets.extend(create_conversation(radiotap_base, tcp.TCP))
-        packets.extend(create_conversation(radiotap_base, udp.UDP))
 
-    random.shuffle(packets)
-    write_cap("radiotap_benchmark.cap", packets, RADIOTAP_PCAP_HEADER)
-
+    radiotap_base = (
+        radiotap.Radiotap()
+        + ieee80211.IEEE80211(framectl=0x8801)
+        + ieee80211.IEEE80211.Dataframe(sec_param=None)
+        + llc.LLC(
+            dsap=170, ssap=170, ctrl=3, snap=int.to_bytes(llc.LLC_TYPE_IP, 5, "big")
+        )
+    )
+    generate_cap_file(
+        radiotap_base, CONVERSATIONS, RADIOTAP_PCAP_HEADER, "radiotap_benchmark.cap"
+    )
 
     min_port = min(PORTS)
     max_port = max(PORTS)
@@ -95,4 +104,6 @@ if __name__ == "__main__":
     )
     print("BPF:", bpf)
     print("Display filter:", display_filter)
-    print("Ethernet cap encapsulation type value: 1\nRadiotap cap encapsulation type value: 23")
+    print(
+        "Ethernet cap encapsulation type value: 1\nRadiotap cap encapsulation type value: 23"
+    )
