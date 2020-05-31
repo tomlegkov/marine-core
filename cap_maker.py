@@ -104,6 +104,5 @@ if __name__ == "__main__":
     )
     print("BPF:", bpf)
     print("Display filter:", display_filter)
-    print(
-        "Ethernet cap encapsulation type value: 1\nRadiotap cap encapsulation type value: 23"
-    )
+    print("Ethernet cap encapsulation type value: 1")
+    print("Radiotap cap encapsulation type value: 23")
