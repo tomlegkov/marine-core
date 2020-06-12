@@ -69,6 +69,7 @@
 
 #include "wiretap/wtap-int.h"
 #include "wiretap/wtap.h"
+#include "wiretap/pcap-encap.h"
 
 #include <pcap/bpf.h>
 
