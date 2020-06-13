@@ -875,21 +875,10 @@ static void reset_epan_mem(capture_file *cf, epan_dissect_t *edt, gboolean tree,
     if (!epan_auto_reset || (cf->count < epan_auto_reset_count))
         return;
 
-    // fprintf(stderr, "resetting session.\n");
-
-    epan_dissect_cleanup(edt);
-    epan_free(cf->epan);
-
-    cf->epan = marine_epan_new(cf);
-    epan_dissect_init(edt, cf->epan, tree, visual);
-    cf->count = 0;
     // Sadly, wireshark caches ether name resolving even when resolving is
     // disabled (Practically caching hex representation of macs) So we clear its
     // cache ourselves
     clear_addr_resolv_map(get_eth_hashtable());
-#if 0
-    // According to our measurements (2020-05-23) clearing these tables has no effect
-    // Uncomment them if you suspect they may be useful
     clear_addr_resolv_map(get_ipv4_hash_table());
     clear_addr_resolv_map(get_manuf_hashtable());
     clear_addr_resolv_map(get_wka_hashtable());
@@ -900,6 +889,16 @@ static void reset_epan_mem(capture_file *cf, epan_dissect_t *edt, gboolean tree,
     clear_conv_table(get_conversation_hashtable_no_port2());
     clear_conv_table(get_conversation_hashtable_no_addr2_or_port2());
     clear_conv_table(get_conversation_hashtable_no_addr2());
+#if 0
+    // This currently segfaults
     clear_conv_table(get_conversation_hashtable_exact());
 #endif
+    wmem_gc(wmem_epan_scope());
+
+    epan_dissect_cleanup(edt);
+    epan_free(cf->epan);
+
+    cf->epan = marine_epan_new(cf);
+    epan_dissect_init(edt, cf->epan, tree, visual);
+    cf->count = 0;
 }
