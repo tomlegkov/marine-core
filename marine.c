@@ -802,6 +802,7 @@ WS_DLL_PUBLIC void destroy_marine(void) {
         if (filter->output_fields) {
             output_fields_free(filter->output_fields);
         }
+        free(filter);
     }
 
     reset_tap_listeners();
