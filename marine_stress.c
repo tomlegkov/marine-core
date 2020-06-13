@@ -3,11 +3,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
+#include <netinet/ether.h>
+#include <netinet/ip.h>
 
 #define PACKET_LEN 800U
-#define ETH_HEADER_LEN 14U
-#define IP_LEN (PACKET_LEN - ETH_HEADER_LEN)
-
+#define IP_LEN (PACKET_LEN - sizeof(struct ether_header))
 void fill_random(char *buf, size_t len) {
     for (size_t i = 0; i < len / sizeof(int); ++i) {
         *(((int *)buf) + i) = rand();
@@ -15,39 +15,19 @@ void fill_random(char *buf, size_t len) {
 }
 
 void random_ip(char *buf) {
-    buf[12] = 0x08; // set ethertype to ipv4
-    buf[13] = 0;
-    buf += 14;       // skip eth
-    *(buf++) = 0x45; // version and len
-    *(buf++) = 0;
-    *(buf++) = (IP_LEN >> 8U) & 0xFFU;
-    *(buf++) = IP_LEN & 0xFFU;
-    buf += 2;             // ip id, leave random
-    *(buf++) = 0;         // flags and fragment
-    *(buf++) = 0;         // fragment
+    struct ether_header* ether_header = (struct ether_header*) buf;
+    struct iphdr* iphdr = (struct iphdr*) (buf + sizeof(struct ether_header));
+    ether_header->ether_type = htons(ETHERTYPE_IP);
+    iphdr->ihl = 5;
+    iphdr->version = 4;
+    iphdr->tos = 0;
+    iphdr->tot_len = htons(IP_LEN);
+    iphdr->frag_off = 0;
 }
 
 void random_tcp(char *buf) {
-    buf += 14;           // skip eth
-    buf[9] = 6;          // set ip type to tcp
-    buf += 20;           // skip ip
-    buf += 4;
-    *(buf++) = 0xde;
-    *(buf++) = 0xad;
-    *(buf++) = 0xbe;
-    *(buf++) = 0xef;
-    *(buf++) = 0;
-    *(buf++) = 0;
-    *(buf++) = 0;
-    *(buf++) = 0;
-    *(buf++) = 0x50;
-    *(buf++) = 0x02;
-    *(buf++) = 0xff;
-    *(buf++) = 0xff;
-    *(buf++) = 0;
-    *(buf++) = 0;
-    *(buf++) = 0;
-    *(buf++) = 0;
+    struct iphdr* iphdr = (struct iphdr*) (buf + sizeof(struct ether_header));
+    iphdr->protocol = IPPROTO_TCP;
 }
 
 int report_mem(size_t rss) {
