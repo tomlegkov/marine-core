@@ -60,8 +60,8 @@ size_t report_current_mem(void) {
     return rss;
 }
 
-#define CHUNK (1U << 17U)
-#define TOTAL_PACKETS (CHUNK << 3U)
+#define CHUNK (1U << 15U)
+#define TOTAL_PACKETS (CHUNK << 4U)
 
 int main(void) {
     srand(0);
