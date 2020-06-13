@@ -57,6 +57,7 @@
 #include "epan/oids.h"
 #endif
 
+#include "epan/conversation.h"
 #include "epan/epan_dissect.h"
 #include "epan/tap.h"
 
@@ -840,8 +841,6 @@ void remove_addr(void *key, void *value, void *user_data) {
 void _clear_addr_resolv_map(wmem_map_t *map) {
     wmem_map_foreach(map, remove_addr, map);
 }
-
-#include "epan/conversation.h"
 
 void free_conv_fields(conversation_t *conv) {
     wmem_free(wmem_epan_scope(), conv);
