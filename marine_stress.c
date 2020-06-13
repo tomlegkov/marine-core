@@ -22,18 +22,15 @@ void random_ip(char *buf) {
     *(buf++) = 0;
     *(buf++) = (IP_LEN >> 8U) & 0xFFU;
     *(buf++) = IP_LEN & 0xFFU;
-    fill_random(buf, 4);
     buf += 2;             // ip id, leave random
     *(buf++) = 0;         // flags and fragment
     *(buf++) = 0;         // fragment
-    fill_random(buf, 12); // randomize TTL, protocol, checksum and ips
 }
 
 void random_tcp(char *buf) {
     buf += 14;           // skip eth
     buf[9] = 6;          // set ip type to tcp
     buf += 20;           // skip ip
-    fill_random(buf, 4); // randomize ports
     buf += 4;
     *(buf++) = 0xde;
     *(buf++) = 0xad;
@@ -72,7 +69,7 @@ int main(void) {
     char *err_msg;
     report_current_mem();
     printf("Loading marine...\n");
-    set_epan_auto_reset_count(CHUNK);
+    set_epan_auto_reset_count(CHUNK - 1);
     init_marine();
     report_current_mem();
     printf("Adding filter\n");
