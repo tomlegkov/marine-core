@@ -73,11 +73,7 @@
 
 #include <pcap/bpf.h>
 
-#if 0
-#define tshark_debug(...) g_warning(__VA_ARGS__)
-#else
-#define tshark_debug(...)
-#endif
+#define MARINE_DEBUG 0
 
 capture_file cfile;
 
@@ -841,7 +837,7 @@ void remove_addr(void *key, void *value, void *user_data) {
     wmem_free(wmem_epan_scope(), value);
 }
 
-void clear_addr_resolv_map(wmem_map_t *map) {
+void _clear_addr_resolv_map(wmem_map_t *map) {
     wmem_map_foreach(map, remove_addr, map);
 }
 
@@ -867,9 +863,25 @@ void remove_conv(void *key, void *value, void *user_data) {
     free_conv((conversation_t *)value);
 }
 
-void clear_conv_table(wmem_map_t *table) {
+void _clear_conv_table(wmem_map_t *table) {
     wmem_map_foreach(table, remove_conv, table);
 }
+
+#if MARINE_DEBUG
+void _clear_and_report(const char * name, void (*clear_func)(wmem_map_t *), wmem_map_t* map) {
+    guint size = wmem_map_size(map);
+    clear_func(map);
+    guint new_size = wmem_map_size(map);
+    if(size != 0) {
+        printf("%s: %d -> %d\n", name, size, new_size);
+    }
+}
+#define clear_addr_resolv_map(map) _clear_and_report(#map, _clear_addr_resolv_map, map)
+#define clear_conv_table(map) _clear_and_report(#map, _clear_conv_table, map)
+#else
+#define clear_addr_resolv_map(map) _clear_addr_resolv_map(map)
+#define clear_conv_table(map) _clear_conv_table(map)
+#endif
 
 static void reset_epan_mem(capture_file *cf, epan_dissect_t *edt, gboolean tree, gboolean visual) {
     if (!epan_auto_reset || (cf->count < epan_auto_reset_count))
@@ -886,12 +898,12 @@ static void reset_epan_mem(capture_file *cf, epan_dissect_t *edt, gboolean tree,
     clear_addr_resolv_map(get_ipxnet_hash_table());
     clear_addr_resolv_map(get_vlan_hash_table());
     clear_addr_resolv_map(get_ipv6_hash_table());
+#if 0
+    // According to our measurements (2020-06-13) these have no effect
+    clear_conv_table(get_conversation_hashtable_exact());
     clear_conv_table(get_conversation_hashtable_no_port2());
     clear_conv_table(get_conversation_hashtable_no_addr2_or_port2());
     clear_conv_table(get_conversation_hashtable_no_addr2());
-#if 0
-    // This currently segfaults
-    clear_conv_table(get_conversation_hashtable_exact());
 #endif
     wmem_gc(wmem_epan_scope());
 
