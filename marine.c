@@ -327,8 +327,8 @@ static void proto_tree_get_node_field_values(proto_node *node, gpointer data) {
     }
 }
 
-static char *
-marine_write_specified_fields(packet_filter *filter, epan_dissect_t *edt, char *output) {
+static char **
+marine_write_specified_fields(packet_filter *filter, epan_dissect_t *edt, char **output) {
     gsize i;
     output_fields_t *fields = filter->output_fields;
     write_field_data_t data;
@@ -362,39 +362,28 @@ marine_write_specified_fields(packet_filter *filter, epan_dissect_t *edt, char *
 
     proto_tree_children_foreach(edt->tree, proto_tree_get_node_field_values, &data);
 
-
-    //char *output = (char *) g_malloc0(4096); // todo this can overflow
-    int counter = 0;
     for (i = 0; i < fields->fields->len; ++i) {
-        if (0 != i) {
-            output[counter++] = fields->separator;
-        }
         if (NULL != fields->field_values[i]) {
             GPtrArray *fv_p;
             gchar *str;
             gsize j;
             fv_p = fields->field_values[i];
-            if (fields->quote != '\0') {
-                output[counter++] = fields->quote;
-            }
+            output[i] = (char *) g_malloc0(4096);
+            int counter = 0;
 
-            /* Output the array of (partial) field values */
             for (j = 0; j < g_ptr_array_len(fv_p); j++) {
                 str = (gchar *) g_ptr_array_index(fv_p, j);
                 for (char *p = str; *p != '\0'; p++) {
-                    output[counter++] = *p;
+                    output[i][counter++] = *p;
                 }
                 g_free(str);
             }
-            if (fields->quote != '\0') {
-                output[counter++] = fields->quote;
-            }
-            g_ptr_array_free(fv_p, TRUE);  /* get ready for the next packet */
+
+            output[i][counter] = '\0';
+            g_ptr_array_free(fv_p, TRUE);
             fields->field_values[i] = NULL;
         }
     }
-
-    output[counter] = '\0';
     return output;
 }
 
@@ -430,7 +419,7 @@ marine_frame_data_init(frame_data *fdata, guint32 num, int len) {
 
 static gboolean
 marine_process_packet(capture_file *cf, epan_dissect_t *edt, packet_filter *filter, Buffer *buf, wtap_rec *rec,
-                      int len, char *output) {
+                      int len, char **output) {
     frame_data fdata;
     column_info *cinfo;
     gboolean passed;
@@ -501,7 +490,7 @@ marine_process_packet(capture_file *cf, epan_dissect_t *edt, packet_filter *filt
 }
 
 static int
-marine_inner_dissect_packet(capture_file *cf, packet_filter *filter, const unsigned char *data, int len, char *output) {
+marine_inner_dissect_packet(capture_file *cf, packet_filter *filter, const unsigned char *data, int len, char **output) {
     wtap_rec rec;
     Buffer buf;
     epan_dissect_t *edt = NULL;
@@ -572,17 +561,12 @@ WS_DLL_PUBLIC marine_result *marine_dissect_packet(int filter_id, unsigned char 
     } else {
         int *key = packet_filter_keys[filter_id];
         packet_filter *filter = (packet_filter *) g_hash_table_lookup(packet_filters, key);
-        char *output = filter->output_fields == NULL ? NULL : (char *) g_malloc0(4096); // TODO export to const
+        char** output = filter->output_fields == NULL ? NULL : (char **) g_malloc0(sizeof(char *) * filter->output_fields->fields->len);
         int passed = marine_inner_dissect_packet(&cfile, filter, data, len, output);
-        if (passed) {
-            result->result = 1;
-            result->output = output;
-        } else {
-            if (output != NULL) {
-                free(output);
-            }
-            result->result = 0;
-        }
+        unsigned int output_len = filter->output_fields == NULL ? 0 : filter->output_fields->fields->len;
+        result->result = passed;
+        result->output = output;
+        result->len = output_len;
     }
     return result;
 }
@@ -919,6 +903,10 @@ WS_DLL_PUBLIC void destroy_marine(void) {
 WS_DLL_PUBLIC void marine_free(marine_result *ptr) {
     if (ptr != NULL) {
         if (ptr->output != NULL) {
+            unsigned int i;
+            for (i = 0; i < ptr->len; i++) {
+                free(ptr->output[i]);
+            }
             free(ptr->output);
         }
         free(ptr);
