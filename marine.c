@@ -132,6 +132,7 @@ typedef struct {
 static GHashTable *packet_filters;
 static int *packet_filter_keys[4096];
 static gboolean prefs_loaded = FALSE;
+static gboolean marine_loaded = FALSE;
 
 
 static void reset_epan_mem(capture_file *cf, epan_dissect_t *edt, gboolean tree, gboolean visual);
@@ -495,9 +496,9 @@ int compile_bpf(char *bpf, struct bpf_program *fcode, int wtap_encap) {
     if (pc == NULL) {
         return -1;
     }
-    
+
     int compile_status = pcap_compile(pc, fcode, bpf, 0, 0);
-    
+
     pcap_close(pc);
     return compile_status;
 }
@@ -564,7 +565,7 @@ int parse_output_fields(output_fields_t *output_fields, char **fields, int field
 WS_DLL_PUBLIC int validate_fields(char **fields, size_t fields_len) {
     output_fields_t *output_fields = output_fields_new();
 
-    if (parse_output_fields(output_fields, fields, fields_len, NULL) != 0) {
+    if (parse_output_fields(output_fields, fields, (int) fields_len, NULL) != 0) {
         return FALSE;
     }
 
@@ -598,7 +599,7 @@ WS_DLL_PUBLIC int marine_add_filter(char *bpf, char *dfilter, char **fields, siz
         packet_output_fields->separator = '\t'; // TODO make const/configurable
         packet_output_fields->quote = '"';
 
-        if (parse_output_fields(packet_output_fields, fields, fields_len, err_msg) != 0) {
+        if (parse_output_fields(packet_output_fields, fields, (int) fields_len, err_msg) != 0) {
             return -3;
         }
     }
@@ -719,7 +720,7 @@ marine_cf_open(capture_file *cf) {
     cf->epan = marine_epan_new(cf);
 }
 
-WS_DLL_PUBLIC int init_marine(void) {
+WS_DLL_PUBLIC int _init_marine(void) {
     // TODO: look at epan_auto_reset
     e_prefs *prefs_p;
 
@@ -781,6 +782,15 @@ WS_DLL_PUBLIC int init_marine(void) {
     packet_filters = g_hash_table_new(g_int_hash, g_int_equal);
     disable_name_resolution();
     return 0;
+}
+
+WS_DLL_PUBLIC int init_marine(void) {
+    if (marine_loaded) {
+        return -2;
+    }
+    int return_code = _init_marine();
+    marine_loaded = TRUE;
+    return return_code;
 }
 
 WS_DLL_PUBLIC void destroy_marine(void) {

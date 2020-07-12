@@ -161,7 +161,7 @@ int main(int argc, char *argv[]) {
 
         print_title(current.title);
         benchmark(start_packet, packet_per_case, current.bpf, current.dfilter, current.fields,
-                current.num_of_fields, encap_type);
+                (int) current.num_of_fields, encap_type);
     }
 
     size_t memory_end = get_current_rss();
