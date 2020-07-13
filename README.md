@@ -27,6 +27,7 @@ The usage is described in C, however it can be applied to any language that will
 
     | Value         | Condition     |
     | ------------- |:-------------:|
+    | -1    | Internal Error      			   |
     | -2    | Marine was already initialized               |
 
 

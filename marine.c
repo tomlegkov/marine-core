@@ -133,7 +133,7 @@ typedef struct {
 static GHashTable *packet_filters;
 static int *packet_filter_keys[4096];
 static gboolean prefs_loaded = FALSE;
-static gboolean can_init_marine = FALSE;
+static gboolean can_init_marine = TRUE;
 
 
 static void reset_epan_mem(capture_file *cf, epan_dissect_t *edt, gboolean tree, gboolean visual);
@@ -740,7 +740,7 @@ int _init_marine(void) {
 
     /* Register all dissectors */
     if (!epan_init(NULL, NULL, TRUE)) {
-        return 1;
+        return -1;
     }
 
     /* we register the plugin taps before the other taps because
@@ -772,7 +772,7 @@ int _init_marine(void) {
     start_exportobjects();
 
     if (!setup_enabled_and_disabled_protocols()) {
-        return 2;
+        return -1;
     }
 
     /* Build the column format array */
@@ -786,11 +786,11 @@ int _init_marine(void) {
 }
 
 WS_DLL_PUBLIC int init_marine(void) {
-    if (can_init_marine) {
+    if (!can_init_marine) {
         return MARINE_ALREADY_INITIALIZED_ERROR_CODE;
     }
     int return_code = _init_marine();
-    can_init_marine = TRUE;
+    can_init_marine = FALSE;
     return return_code;
 }
 
