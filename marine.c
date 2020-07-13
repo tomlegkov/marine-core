@@ -88,6 +88,7 @@ static gboolean epan_auto_reset = TRUE;
 
 const unsigned int ETHERNET_ENCAP = 1;
 const unsigned int WIFI_ENCAP = 23;
+const unsigned int MARINE_ALREADY_INITIALIZED_ERROR_CODE = -2;
 
 /*
  * The way the packet decode is to be written.
@@ -132,7 +133,7 @@ typedef struct {
 static GHashTable *packet_filters;
 static int *packet_filter_keys[4096];
 static gboolean prefs_loaded = FALSE;
-static gboolean marine_loaded = FALSE;
+static gboolean can_init_marine = FALSE;
 
 
 static void reset_epan_mem(capture_file *cf, epan_dissect_t *edt, gboolean tree, gboolean visual);
@@ -720,7 +721,7 @@ marine_cf_open(capture_file *cf) {
     cf->epan = marine_epan_new(cf);
 }
 
-WS_DLL_PUBLIC int _init_marine(void) {
+int _init_marine(void) {
     // TODO: look at epan_auto_reset
     e_prefs *prefs_p;
 
@@ -785,11 +786,11 @@ WS_DLL_PUBLIC int _init_marine(void) {
 }
 
 WS_DLL_PUBLIC int init_marine(void) {
-    if (marine_loaded) {
-        return -2;
+    if (can_init_marine) {
+        return MARINE_ALREADY_INITIALIZED_ERROR_CODE;
     }
     int return_code = _init_marine();
-    marine_loaded = TRUE;
+    can_init_marine = TRUE;
     return return_code;
 }
 
