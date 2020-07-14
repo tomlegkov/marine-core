@@ -12,6 +12,7 @@ typedef struct {
     char *bpf;
     char *dfilter;
     char **fields;
+    int *macro_indices;
     unsigned int num_of_fields;
 } benchmark_case;
 
@@ -51,10 +52,9 @@ int load_cap(char *file, packet **packets, char errbuff[PCAP_ERRBUF_SIZE]) {
     return p_count;
 }
 
-void benchmark(packet packets[], int packet_len, char *bpf, char *display_filter, char *fields[], unsigned int fields_len,
-        int encapsulation_type) {
+void benchmark(packet packets[], int packet_len, char *bpf, char *display_filter, char *fields[], int* macro_indices, unsigned int fields_len, int encapsulation_type) {
     char *err_msg;
-    int filter_id = marine_add_filter(bpf, display_filter, fields, fields_len, encapsulation_type, &err_msg);
+    int filter_id = marine_add_filter(bpf, display_filter, fields, macro_indices, fields_len, encapsulation_type, &err_msg);
     struct timespec start_time, end_time;
 
 
@@ -126,6 +126,8 @@ int main(int argc, char *argv[]) {
             "tcp.srcport",
             "udp.srcport"
     };
+    int three_no_macro[3];
+    memset(three_no_macro, 0, sizeof(three_no_macro));
     char *eight_fields[] = {
             "ip.proto",
             "tcp.srcport",
@@ -136,15 +138,18 @@ int main(int argc, char *argv[]) {
             "ip.version",
             "frame.encap_type"
     };
+    int eight_no_macro[8];
+    memset(eight_no_macro, 0, sizeof(eight_no_macro));
+    
 
     benchmark_case cases[] = {
-            {"Benchmark with BPF",                                            bpf, NULL,    NULL, 0},
-            {"Benchmark with Display filter",         NULL,                        dfilter, NULL, 0},
-            {"Benchmark with BPF and Display filter",                         bpf, dfilter, NULL, 0},
-            {"Benchmark with three extracted fields", NULL,                        NULL,    three_fields, ARRAY_SIZE(three_fields)},
-            {"Benchmark with eight extracted fields", NULL,                        NULL,    eight_fields, ARRAY_SIZE(eight_fields)},
-            {"Benchmark with BPF, Display filter and three extracted fields", bpf, dfilter, three_fields, ARRAY_SIZE(three_fields)},
-            {"Benchmark with BPF, Display filter and eight extracted fields", bpf, dfilter, eight_fields, ARRAY_SIZE(eight_fields)},
+            {"Benchmark with BPF",                                            bpf,  NULL,    NULL,         NULL,           0},
+            {"Benchmark with Display filter",                                 NULL, dfilter, NULL,         NULL,           0},
+            {"Benchmark with BPF and Display filter",                         bpf,  dfilter, NULL,         NULL,           0},
+            {"Benchmark with three extracted fields",                         NULL, NULL,    three_fields, three_no_macro, ARRAY_SIZE(three_fields)},
+            {"Benchmark with eight extracted fields",                         NULL, NULL,    eight_fields, eight_no_macro, ARRAY_SIZE(eight_fields)},
+            {"Benchmark with BPF, Display filter and three extracted fields", bpf,  dfilter, three_fields, three_no_macro, ARRAY_SIZE(three_fields)},
+            {"Benchmark with BPF, Display filter and eight extracted fields", bpf,  dfilter, eight_fields, eight_no_macro, ARRAY_SIZE(eight_fields)},
     };
 
     int num_of_cases = ARRAY_SIZE(cases);
@@ -160,7 +165,7 @@ int main(int argc, char *argv[]) {
         packet *start_packet = packets + (packet_per_case * case_index);
 
         print_title(current.title);
-        benchmark(start_packet, packet_per_case, current.bpf, current.dfilter, current.fields,
+        benchmark(start_packet, packet_per_case, current.bpf, current.dfilter, current.fields, current.macro_indices,
                 current.num_of_fields, encap_type);
     }
 

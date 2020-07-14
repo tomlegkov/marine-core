@@ -131,6 +131,7 @@ typedef struct {
     struct bpf_program fcode;
     dfilter_t *dfcode;
     output_fields_t *output_fields;
+    int *macro_indices;
     int wtap_encap;
 } packet_filter;
 
@@ -274,14 +275,22 @@ marine_write_specified_fields(packet_filter *filter, epan_dissect_t *edt, char *
     //char *output = (char *) g_malloc0(4096); // todo this can overflow
     int counter = 0;
     for (i = 0; i < fields->fields->len; ++i) {
+        gchar *field = (gchar *) g_ptr_array_index(fields->fields, i);
+        unsigned int fixed_index = GPOINTER_TO_UINT(g_hash_table_lookup(fields->field_indicies, field)) - 1;
+    
+        if (g_ptr_array_len(fields->field_values[fixed_index]) == 0 && filter->macro_indices[i] != 0) {
+            continue;
+        }
+
         if (0 != i) {
             output[counter++] = fields->separator;
         }
-        if (NULL != fields->field_values[i]) {
+
+        if (NULL != fields->field_values[fixed_index]) {
             GPtrArray *fv_p;
             gchar *str;
             gsize j;
-            fv_p = fields->field_values[i];
+            fv_p = fields->field_values[fixed_index];
             if (fields->quote != '\0') {
                 output[counter++] = fields->quote;
             }
@@ -292,12 +301,28 @@ marine_write_specified_fields(packet_filter *filter, epan_dissect_t *edt, char *
                 for (char *p = str; *p != '\0'; p++) {
                     output[counter++] = *p;
                 }
-                g_free(str);
             }
+
             if (fields->quote != '\0') {
                 output[counter++] = fields->quote;
             }
-            g_ptr_array_free(fv_p, TRUE);  /* get ready for the next packet */
+
+            i += filter->macro_indices[i];
+        }
+    }
+
+    /* get ready for the next packet */
+    for (i = 0; i < fields->fields->len; i++) {
+        if (NULL != fields->field_values[i]) {
+            GPtrArray *fv_p;
+            gsize j;
+            fv_p = fields->field_values[i];
+
+            for (j = 0; j < g_ptr_array_len(fv_p); j++) {
+                g_free(g_ptr_array_index(fv_p, j));
+            }
+
+            g_ptr_array_free(fv_p, TRUE);  
             fields->field_values[i] = NULL;
         }
     }
@@ -579,12 +604,13 @@ WS_DLL_PUBLIC int validate_fields(char **fields, unsigned int fields_len) {
     return TRUE;
 }
 
-WS_DLL_PUBLIC int marine_add_filter(char *bpf, char *dfilter, char **fields, unsigned int fields_len, int wtap_encap, char **err_msg) {
+WS_DLL_PUBLIC int marine_add_filter(char *bpf, char *dfilter, char **fields, int* macro_indices, unsigned int fields_len, int wtap_encap, char **err_msg) {
     // TODO make the error codes consts
     struct bpf_program fcode;
     dfilter_t *dfcode = NULL;
     output_fields_t *packet_output_fields = NULL;
     int has_bpf = FALSE;
+    int *macro_indices_copy;
 
     if (bpf != NULL) {
         has_bpf = TRUE;
@@ -610,6 +636,11 @@ WS_DLL_PUBLIC int marine_add_filter(char *bpf, char *dfilter, char **fields, uns
         }
     }
 
+    macro_indices_copy = (int *) g_malloc0(sizeof(int) * fields_len);
+    for (size_t i = 0; i < fields_len; i++) {
+        macro_indices_copy[i] = macro_indices[i];
+    }
+
     int size = g_hash_table_size(packet_filters);
     int *key = g_new0(gint, 1);
     *key = size;
@@ -618,6 +649,7 @@ WS_DLL_PUBLIC int marine_add_filter(char *bpf, char *dfilter, char **fields, uns
     filter->fcode = fcode;
     filter->dfcode = dfcode;
     filter->output_fields = packet_output_fields;
+    filter->macro_indices = macro_indices_copy;
     filter->wtap_encap = wtap_encap;
     g_hash_table_insert(packet_filters, key, filter);
     packet_filter_keys[size] = key;
@@ -813,6 +845,9 @@ WS_DLL_PUBLIC void destroy_marine(void) {
         }
         if (filter->output_fields) {
             output_fields_free(filter->output_fields);
+        }
+        if (filter->macro_indices) {
+            free(filter->macro_indices);
         }
         free(filter);
     }
