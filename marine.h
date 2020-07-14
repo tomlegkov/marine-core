@@ -4,7 +4,6 @@
 #define WIRESHARK_MARINE_H
 
 #include <glib.h>
-#include <ws_symbol_export.h>
 #define ARRAY_SIZE(arr)     (sizeof(arr) / sizeof((arr)[0]))
 
 typedef struct {
@@ -22,6 +21,6 @@ void destroy_marine(void);
 
 extern const unsigned int ETHERNET_ENCAP;
 extern const unsigned int WIFI_ENCAP;
-WS_DLL_PUBLIC const unsigned int MARINE_ALREADY_INITIALIZED_ERROR_CODE;
+unsigned int MARINE_ALREADY_INITIALIZED_ERROR_CODE;
 
 #endif //WIRESHARK_MARINE_H
