@@ -497,9 +497,9 @@ int compile_bpf(char *bpf, struct bpf_program *fcode, int wtap_encap) {
     if (pc == NULL) {
         return -1;
     }
-
+    
     int compile_status = pcap_compile(pc, fcode, bpf, 0, 0);
-
+    
     pcap_close(pc);
     return compile_status;
 }
@@ -789,9 +789,8 @@ WS_DLL_PUBLIC int init_marine(void) {
     if (!can_init_marine) {
         return MARINE_ALREADY_INITIALIZED_ERROR_CODE;
     }
-    int return_code = _init_marine();
     can_init_marine = FALSE;
-    return return_code;
+    return _init_marine();;
 }
 
 WS_DLL_PUBLIC void destroy_marine(void) {
