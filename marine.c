@@ -88,7 +88,7 @@ static gboolean epan_auto_reset = TRUE;
 
 const unsigned int ETHERNET_ENCAP = 1;
 const unsigned int WIFI_ENCAP = 23;
-WS_DLL_PUBLIC_DEF int MARINE_ALREADY_INITIALIZED_ERROR_CODE = -2;
+WS_DLL_PUBLIC_DEF const int MARINE_ALREADY_INITIALIZED_ERROR_CODE = -2;
 
 /*
  * The way the packet decode is to be written.
