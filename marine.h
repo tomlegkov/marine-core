@@ -22,4 +22,9 @@ void destroy_marine(void);
 extern const unsigned int ETHERNET_ENCAP;
 extern const unsigned int WIFI_ENCAP;
 
+
+const int BadBPFErrorCode;
+const int BadDisplayFilterErrorCode;
+const int InvalidFieldErrorCode;
+
 #endif //WIRESHARK_MARINE_H
