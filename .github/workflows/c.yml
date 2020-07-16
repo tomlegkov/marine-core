@@ -24,7 +24,7 @@ jobs:
         path: build/
         key: none
     - name: cmake
-      run: mkdir build && cd build && cmake -GNinja ..
+      run: mkdir -p build && cd build && cmake -GNinja ..
     - name: 'Build marine'
       run: ninja -C build marine
     - name: stress
