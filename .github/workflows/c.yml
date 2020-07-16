@@ -19,15 +19,12 @@ jobs:
       run: gcc --version
     - name: cmake
       run: mkdir build && cd build && cmake -GNinja ..
-    - name: 'Cache epan'
+    - name: 'Cache build'
       uses: actions/cache@v2
-      id: cache-epan
+      id: cache-build
       with:
-        path: build/epan/
-        key: ${{ runner.os }}-${{ hashFiles('epan/**') }}
-    - name: 'Build epan'
-      if: steps.cache-epan.outputs.cache-hit != 'true'
-      run: ninja -C build epan
+        path: build/
+        key: none
     - name: 'Build marine'
       run: ninja -C build marine
     - name: stress
