@@ -51,7 +51,7 @@ jobs:
         key: ${{ hashFiles('cap_maker.py') }}
     - name: 'Generate benchmark caps'
       if: steps.cache-caps.outputs.cache-hit != 'true'
-      run: sudo pip3 install pypacker && python3 cap_maker.py
+      run: pip3 install pypacker && python3 cap_maker.py
     - name: 'Benchmark ethernet'
       run: ./run/marine_benchmark ethernet_benchmark.cap 1
     - name: 'Benchmark wifi'
