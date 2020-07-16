@@ -47,12 +47,12 @@ jobs:
       if: steps.cache-caps.outputs.cache-hit != 'true'
       run: pip3 install pypacker && python3 cap_maker.py
     - name: 'Benchmark ethernet'
-      run: ./run/marine_benchmark ethernet_benchmark.cap 1 | tee ethernet_benchmark.log
+      run: ./build/run/marine_benchmark ethernet_benchmark.cap 1 | tee ethernet_benchmark.log
     - uses: actions/upload-artifact@v2
       with:
         path: ethernet_benchmark.log
     - name: 'Benchmark wifi'
-      run: ./run/marine_benchmark wifi_benchmark.cap 23 | tee wifi_benchmark.log
+      run: ./build/run/marine_benchmark wifi_benchmark.cap 23 | tee wifi_benchmark.log
     - uses: actions/upload-artifact@v2
       with:
         path: wifi_benchmark.log
