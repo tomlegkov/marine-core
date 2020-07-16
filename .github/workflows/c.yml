@@ -1,0 +1,27 @@
+name: C/C++ CI
+
+on:
+  push:
+    branches: [ marine ]
+  pull_request:
+    branches: [ marine ]
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: install deps
+      run: apt update && apt install -y build-essential cmake ninja-build libpcap-dev libglib2.0-dev libgcrypt20-dev libc-ares-dev bison flex liblz4-dev libsmi2-dev libgnutls28-dev libminizip-dev libbrotli-dev libsnappy-dev libzstd-dev libnghttp2-dev lua5.1 luajit libspandsp-dev libxml2-dev liblua5.1-dev libluajit-5.1 libkrb5-dev
+    - name: info
+      run: gcc --version
+    - name: cmake
+      run: cmake -GNinja .
+    - name: build
+      run: ninja marine
+    - name: benchmark
+      run: ninja marine_benchmark && ./run/marine_benchmark
+    - name: stress
+      run: ninja marine_stress && ./run/marine_stress
