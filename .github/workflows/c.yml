@@ -49,7 +49,7 @@ jobs:
       with:
         path: ethernet_benchmark.log
     - name: 'Benchmark wifi'
-      run: ./build/run/marine_benchmark wifi_benchmark.cap 23 | tee wifi_benchmark.log
+      run: ./build/run/marine_benchmark radiotap_benchmark.cap 23 | tee wifi_benchmark.log
     - uses: actions/upload-artifact@v2
       with:
         path: wifi_benchmark.log
