@@ -19,24 +19,15 @@ jobs:
       run: gcc --version
     - name: cmake
       run: mkdir build && cd build && cmake -GNinja ..
-    - name: 'Cache dissectors'
+    - name: 'Cache epan'
       uses: actions/cache@v2
-      id: cache-dissectors
+      id: cache-epan
       with:
-        path: build/epan/dissectors
-        key: ${{ runner.os }}-${{ hashFiles('epan/dissectors/**') }}
-    - name: 'Cache wsutil'
-      uses: actions/cache@v2
-      id: cache-wsutil
-      with:
-        path: build/wsutil
-        key: ${{ runner.os }}-${{ hashFiles('wsutil/**') }}
-    - name: 'Build dissectors'
-      if: steps.cache-dissectors.outputs.cache-hit != 'true'
+        path: build/epan/
+        key: ${{ runner.os }}-${{ hashFiles('epan/**') }}
+    - name: 'Build epan'
+      if: steps.cache-epan.outputs.cache-hit != 'true'
       run: ninja -C build epan
-    - name: 'Build wsutil'
-      if: steps.cache-wsutil.outputs.cache-hit != 'true'
-      run: ninja -C build wsutil
     - name: 'Build marine'
       run: ninja -C build marine
     - name: stress
