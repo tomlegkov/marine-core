@@ -14,14 +14,45 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - name: install deps
-      run: sudo apt update && sudo apt install -y build-essential cmake ninja-build libpcap-dev libglib2.0-dev libgcrypt20-dev libc-ares-dev bison flex liblz4-dev libsmi2-dev libgnutls28-dev libminizip-dev libbrotli-dev libsnappy-dev libzstd-dev libnghttp2-dev lua5.1 luajit libspandsp-dev libxml2-dev liblua5.1-dev libluajit-5.1 libkrb5-dev
+      run: sudo apt update && sudo apt install -y build-essential cmake ninja-build libpcap-dev libglib2.0-dev libgcrypt20-dev libc-ares-dev bison flex liblz4-dev libsmi2-dev libgnutls28-dev libminizip-dev libbrotli-dev libsnappy-dev libzstd-dev libnghttp2-dev lua5.1 luajit libspandsp-dev libxml2-dev liblua5.1-dev libluajit-5.1 libkrb5-dev python3-pip
     - name: info
       run: gcc --version
     - name: cmake
-      run: cmake -GNinja .
-    - name: build
-      run: ninja marine
-    - name: benchmark
-      run: ninja marine_benchmark && ./run/marine_benchmark
+      run: mkdir build && cd build && cmake -GNinja ..
+    - name: 'Cache dissectors'
+      uses: actions/cache@v2
+      with:
+        id: cache-dissectors
+        path: build/epan/dissectors
+        key: ${{ runner.os }}-${{ hashFiles('epan/dissectors/**') }}
+    - name: 'Cache wsutil'
+      uses: actions/cache@v2
+      with:
+        id: cache-wsutil
+        path: build/wsutil
+        key: ${{ runner.os }}-${{ hashFiles('wsutil/**') }}
+    - name: 'Build dissectors'
+      if: steps.cache-dissectors.outputs.cache-hit != 'true'
+      run: ninja -C build epan
+    - name: 'Build wsutil'
+      if: steps.cache-wsutil.outputs.cache-hit != 'true'
+      run: ninja -C build wsutil
+    - name: 'Build marine'
+      run: ninja -C build marine
     - name: stress
-      run: ninja marine_stress && ./run/marine_stress
+      run: ninja -C build marine_stress && ./build/run/marine_stress
+    - name: 'Build benchmark'
+      run: ninja -C build marine_benchmark
+    - name: 'Cache benchmark caps'
+      uses: actions/cache@v2
+      with:
+        id: cache-caps
+        path: '*_benchmark.cap'
+        key: ${{ hashFiles('cap_maker.py') }}
+    - name: 'Generate benchmark caps'
+      if: steps.cache-caps.outputs.cache-hit != 'true'
+      run: sudo pip3 install pypacker && python3 cap_maker.py
+    - name: 'Benchmark ethernet'
+      run: ./run/marine_benchmark ethernet_benchmark.cap 1
+    - name: 'Benchmark wifi'
+      run: ./run/marine_benchmark wifi_benchmark.cap 23
