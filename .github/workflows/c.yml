@@ -40,7 +40,10 @@ jobs:
     - name: 'Build marine'
       run: ninja -C build marine
     - name: stress
-      run: ninja -C build marine_stress && ./build/run/marine_stress
+      run: ninja -C build marine_stress && ./build/run/marine_stress | tee stress.log
+    - uses: actions/upload-artifact@v2
+      with:
+        path: stress.log
     - name: 'Build benchmark'
       run: ninja -C build marine_benchmark
     - name: 'Cache benchmark caps'
@@ -53,6 +56,12 @@ jobs:
       if: steps.cache-caps.outputs.cache-hit != 'true'
       run: pip3 install pypacker && python3 cap_maker.py
     - name: 'Benchmark ethernet'
-      run: ./run/marine_benchmark ethernet_benchmark.cap 1
+      run: ./run/marine_benchmark ethernet_benchmark.cap 1 | tee ethernet_benchmark.log
+    - uses: actions/upload-artifact@v2
+      with:
+        path: ethernet_benchmark.log
     - name: 'Benchmark wifi'
-      run: ./run/marine_benchmark wifi_benchmark.cap 23
+      run: ./run/marine_benchmark wifi_benchmark.cap 23 | tee wifi_benchmark.log
+    - uses: actions/upload-artifact@v2
+      with:
+        path: wifi_benchmark.log
