@@ -20,26 +20,12 @@ jobs:
     - name: 'Build info'
       run: gcc --version
 
-    - name: 'Cache build'
-      uses: actions/cache@v2
-      id: cache-build
-      with:
-        path: build/
-        key: none
-
-    # cached in order to preserve timestamp to enable ninja caching
-    - name: 'Cache epan sources'
-      uses: actions/cache@v2
-      id: cache-epan-sources
-      with:
-        path: epan/
-        key: ${{ hashFiles('epan/**') }}
-
     - name: 'cmake'
       run: mkdir -p build && cd build && cmake -GNinja ..
 
     - name: 'Build marine'
       run: ninja -C build marine
+
     - name: stress
       run: ninja -C build marine_stress && ./build/run/marine_stress | tee stress.log
 
