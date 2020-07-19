@@ -126,8 +126,6 @@ int main(int argc, char *argv[]) {
             "tcp.srcport",
             "udp.srcport"
     };
-    int three_no_macro[3];
-    memset(three_no_macro, 0, sizeof(three_no_macro));
     char *eight_fields[] = {
             "ip.proto",
             "tcp.srcport",
@@ -138,18 +136,16 @@ int main(int argc, char *argv[]) {
             "ip.version",
             "frame.encap_type"
     };
-    int eight_no_macro[8];
-    memset(eight_no_macro, 0, sizeof(eight_no_macro));
-    
+
 
     benchmark_case cases[] = {
             {"Benchmark with BPF",                                            bpf,  NULL,    NULL,         NULL,           0},
             {"Benchmark with Display filter",                                 NULL, dfilter, NULL,         NULL,           0},
             {"Benchmark with BPF and Display filter",                         bpf,  dfilter, NULL,         NULL,           0},
-            {"Benchmark with three extracted fields",                         NULL, NULL,    three_fields, three_no_macro, ARRAY_SIZE(three_fields)},
-            {"Benchmark with eight extracted fields",                         NULL, NULL,    eight_fields, eight_no_macro, ARRAY_SIZE(eight_fields)},
-            {"Benchmark with BPF, Display filter and three extracted fields", bpf,  dfilter, three_fields, three_no_macro, ARRAY_SIZE(three_fields)},
-            {"Benchmark with BPF, Display filter and eight extracted fields", bpf,  dfilter, eight_fields, eight_no_macro, ARRAY_SIZE(eight_fields)},
+            {"Benchmark with three extracted fields",                         NULL, NULL,    three_fields, NULL, ARRAY_SIZE(three_fields)},
+            {"Benchmark with eight extracted fields",                         NULL, NULL,    eight_fields, NULL, ARRAY_SIZE(eight_fields)},
+            {"Benchmark with BPF, Display filter and three extracted fields", bpf,  dfilter, three_fields, NULL, ARRAY_SIZE(three_fields)},
+            {"Benchmark with BPF, Display filter and eight extracted fields", bpf,  dfilter, eight_fields, NULL, ARRAY_SIZE(eight_fields)},
     };
 
     int num_of_cases = ARRAY_SIZE(cases);

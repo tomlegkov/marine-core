@@ -126,12 +126,18 @@ typedef struct { // Required for in-place implementation of static methods
     epan_dissect_t *edt;
 } write_field_data_t;
 
+/*
+ * Marine packet filter with all the needed data to parse the packet.
+ * macro_indices: array that groups the fields into different macros - [0, 0, 1, 1, 2].
+ * last_macro: boolean array that specifies if the field is the last in its macro group.
+ */
 typedef struct {
     int has_bpf;
     struct bpf_program fcode;
     dfilter_t *dfcode;
     output_fields_t *output_fields;
     int *macro_indices;
+    gboolean *last_macro;
     int wtap_encap;
 } packet_filter;
 
@@ -271,14 +277,15 @@ marine_write_specified_fields(packet_filter *filter, epan_dissect_t *edt, char *
 
     proto_tree_children_foreach(edt->tree, proto_tree_get_node_field_values, &data);
 
+    GHashTable *used_macros = g_hash_table_new(g_int_hash, g_int_equal);
 
     //char *output = (char *) g_malloc0(4096); // todo this can overflow
     int counter = 0;
     for (i = 0; i < fields->fields->len; ++i) {
         gchar *field = (gchar *) g_ptr_array_index(fields->fields, i);
         unsigned int fixed_index = GPOINTER_TO_UINT(g_hash_table_lookup(fields->field_indicies, field)) - 1;
-    
-        if (g_ptr_array_len(fields->field_values[fixed_index]) == 0 && filter->macro_indices[i] != 0) {
+
+        if (filter->macro_indices != NULL && (g_hash_table_contains(used_macros, filter->macro_indices + i) || (g_ptr_array_len(fields->field_values[fixed_index]) == 0 && !filter->last_macro[i]))) {
             continue;
         }
 
@@ -307,11 +314,16 @@ marine_write_specified_fields(packet_filter *filter, epan_dissect_t *edt, char *
                 output[counter++] = fields->quote;
             }
 
-            i += filter->macro_indices[i];
+            if (filter->macro_indices != NULL) {
+                int *key = g_new(gint, 1);
+                *key = filter->macro_indices[i];
+                g_hash_table_add(used_macros, key);
+            }
         }
     }
 
-    /* get ready for the next packet */
+    /* get ready for the next packet
+     * This is done in a different loop as we use fixed_index and might go over the same field twice */
     for (i = 0; i < fields->fields->len; i++) {
         if (NULL != fields->field_values[i]) {
             GPtrArray *fv_p;
@@ -326,6 +338,8 @@ marine_write_specified_fields(packet_filter *filter, epan_dissect_t *edt, char *
             fields->field_values[i] = NULL;
         }
     }
+
+    g_hash_table_destroy(used_macros);
 
     output[counter] = '\0';
     return output;
@@ -604,6 +618,25 @@ WS_DLL_PUBLIC int validate_fields(char **fields, unsigned int fields_len) {
     return TRUE;
 }
 
+gboolean* last_seen(const int* arr, int len) {
+    gboolean *ret_arr = g_new0(gboolean, len);
+    GHashTable *seen_values = g_hash_table_new(g_int_hash, g_int_equal);
+
+    for (int i = len - 1; i >= 0; i--) {
+        if (!g_hash_table_contains(seen_values, (arr + i))) {
+            int *key = g_new(gint, 1);
+            *key = arr[i];
+            g_hash_table_add(seen_values, key);
+            ret_arr[i] = TRUE;
+        } else {
+            ret_arr[i] = FALSE;
+        }
+    }
+
+    g_hash_table_destroy(seen_values);
+    return ret_arr;
+}
+
 WS_DLL_PUBLIC int marine_add_filter(char *bpf, char *dfilter, char **fields, int* macro_indices, unsigned int fields_len, int wtap_encap, char **err_msg) {
     // TODO make the error codes consts
     struct bpf_program fcode;
@@ -611,6 +644,7 @@ WS_DLL_PUBLIC int marine_add_filter(char *bpf, char *dfilter, char **fields, int
     output_fields_t *packet_output_fields = NULL;
     int has_bpf = FALSE;
     int *macro_indices_copy;
+    gboolean *last_macro;
 
     if (bpf != NULL) {
         has_bpf = TRUE;
@@ -636,9 +670,12 @@ WS_DLL_PUBLIC int marine_add_filter(char *bpf, char *dfilter, char **fields, int
         }
     }
 
-    macro_indices_copy = (int *) g_malloc0(sizeof(int) * fields_len);
-    for (size_t i = 0; i < fields_len; i++) {
-        macro_indices_copy[i] = macro_indices[i];
+    macro_indices_copy = NULL;
+    last_macro = NULL;
+    if (macro_indices != NULL) {
+        macro_indices_copy = (int *) g_malloc0(sizeof(int) * fields_len);
+        memcpy(macro_indices_copy, macro_indices, sizeof(int) * fields_len);
+        last_macro = last_seen(macro_indices_copy, fields_len);
     }
 
     int size = g_hash_table_size(packet_filters);
@@ -650,6 +687,7 @@ WS_DLL_PUBLIC int marine_add_filter(char *bpf, char *dfilter, char **fields, int
     filter->dfcode = dfcode;
     filter->output_fields = packet_output_fields;
     filter->macro_indices = macro_indices_copy;
+    filter->last_macro = last_macro;
     filter->wtap_encap = wtap_encap;
     g_hash_table_insert(packet_filters, key, filter);
     packet_filter_keys[size] = key;
@@ -848,6 +886,9 @@ WS_DLL_PUBLIC void destroy_marine(void) {
         }
         if (filter->macro_indices) {
             free(filter->macro_indices);
+        }
+        if (filter->last_macro) {
+            free(filter->last_macro);
         }
         free(filter);
     }
