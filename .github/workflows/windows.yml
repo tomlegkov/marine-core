@@ -4,6 +4,7 @@ on: [push]
 
 jobs:
   windows:
+    if: false
     name: Build & Test
     runs-on: windows-latest
     steps:
