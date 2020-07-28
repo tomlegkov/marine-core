@@ -4,6 +4,7 @@ on: [push]
 
 jobs:
   ubuntu:
+    if: false
     name: Build & Test
     runs-on: ubuntu-latest
     steps:
