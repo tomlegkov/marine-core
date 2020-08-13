@@ -91,7 +91,7 @@ const unsigned int WIFI_ENCAP = 23;
 
 WS_DLL_PUBLIC_DEF const int BAD_BPF_ERROR_CODE = -1;
 WS_DLL_PUBLIC_DEF const int BAD_DISPLAY_FILTER_ERROR_CODE = -2;
-WS_DLL_PUBLIC_DEF const int INVALID_FIELD_ERROR_CODE = -3;§
+WS_DLL_PUBLIC_DEF const int INVALID_FIELD_ERROR_CODE = -3;
 
 /*
  * The way the packet decode is to be written.
