@@ -288,8 +288,7 @@ marine_write_specified_fields(packet_filter *filter, epan_dissect_t *edt, char *
         if (filter->macro_ids != NULL && (g_hash_table_contains(used_macros, filter->macro_ids + i) || (g_ptr_array_len(fields->field_values[fixed_index]) == 0 && !filter->last_in_macro[i]))) {
             continue;
         }
-
-        if (0 != i) {
+        if (0 != counter) {
             output[counter++] = fields->separator;
         }
 
