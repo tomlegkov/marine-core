@@ -19,7 +19,7 @@ jobs:
       id: cache-docker
       with:
         path: '/var/lib/docker/'
-        key: ${{ hashFiles('redhat/Dockerfile') }}-${{ hashFiles('redhat/rpms.txt') }}
+        key: 'constant-because-docker-handles-cache'
 
     - name: "Build RPMs"
       run: cd redhat && bash ./redhat.sh
