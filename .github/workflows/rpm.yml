@@ -22,7 +22,7 @@ jobs:
         key: 'constant-because-docker-handles-cache'
 
     - name: "Build RPMs"
-      run: cd redhat && bash ./redhat.sh
+      run: cd redhat && bash ./build.sh
 
     - uses: actions/upload-artifact@v2
       with:
