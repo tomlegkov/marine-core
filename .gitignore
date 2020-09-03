@@ -171,3 +171,4 @@ packaging/portableapps/appinfo.ini
 vgcore.*
 .pytest_cache/
 test/*.log
+redhat/build/
