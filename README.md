@@ -57,7 +57,7 @@ char *err_msg;
 char *bpf = "ip host 1.1.1.1"; // can be NULL
 char *display_filter = "tcp.port == 123"; // can be NULL
 char *fields[] = {"ip.src", "frame.number"}; // can be NULL (and pass fields_len=0 instead of 2)
-int filter_id = marine_add_filter(bpf, display_filter, fields, NULL, 2, ETHERNET_ENCAP, err_msg);
+int filter_id = marine_add_filter(bpf, display_filter, fields, NULL, 2, ETHERNET_ENCAP, &err_msg);
 
 if (filter_id < 0) {
     fprintf(stderr, "Error while creating filter: %s", err_msg);
