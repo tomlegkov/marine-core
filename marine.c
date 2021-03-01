@@ -34,6 +34,7 @@
 #include "wiretap/wtap_opttypes.h"
 #include "wsutil/filesystem.h"
 #include "wsutil/privileges.h"
+#include "wsutil/report_message.h"
 
 #include "epan/packet.h"
 
@@ -148,6 +149,26 @@ static int *packet_filter_keys[4096];
 static gboolean prefs_loaded = FALSE;
 static gboolean can_init_marine = TRUE;
 
+static void
+failure_warning_message(const char *msg_format, va_list ap) {
+    fprintf(stderr, "marine: ");
+    vfprintf(stderr, msg_format, ap);
+    fprintf(stderr, "\n");
+}
+
+static void
+open_failure_message(const char *filename, int err, gboolean for_writing) {
+    fprintf(stderr, "marine: ");
+    fprintf(stderr, file_open_error_message(err, for_writing), filename);
+    fprintf(stderr, "\n");    
+}
+
+static void
+read_write_failure_message(const char *filename, int err) {
+    fprintf(stderr, "marine: ");
+    fprintf(stderr, "An error occured while reading/writing from the file \"%s\": %s.", filename, g_strerror(err));
+    fprintf(stderr, "\n");    
+}
 
 static void reset_epan_mem(capture_file *cf, epan_dissect_t *edt, gboolean tree, gboolean visual);
 
@@ -317,7 +338,7 @@ marine_write_specified_fields(packet_filter *filter, epan_dissect_t *edt, char *
                 }
             }
 
-            output[counter++][field_counter] = '\0';
+            output[counter][field_counter] = '\0';
 
             if (filter->macro_ids != NULL) {
                 int *key = g_new(gint, 1);
@@ -325,6 +346,7 @@ marine_write_specified_fields(packet_filter *filter, epan_dissect_t *edt, char *
                 g_hash_table_add(used_macros, key);
             }
         }
+        counter++;
     }
 
     /* get ready for the next packet
@@ -577,7 +599,7 @@ int parse_output_fields(output_fields_t *output_fields, char **fields, unsigned 
     }
 
     GSList *it = NULL;
-    GSList *invalid_fields = output_fields_valid(output_fields);
+    GSList *invalid_fields = g_slist_reverse(output_fields_valid(output_fields));
     if (invalid_fields != NULL) {
         if (err_msg == NULL) {
             return -1;
@@ -591,7 +613,8 @@ int parse_output_fields(output_fields_t *output_fields, char **fields, unsigned 
         *err_msg = (char *)g_malloc0(total_size);
         for (it = invalid_fields; it != NULL; it = g_slist_next(it)) {
             strcat(*err_msg, (gchar *) it->data);
-            strcat(*err_msg, "\t");
+            if (g_slist_next(it) != NULL)
+                strcat(*err_msg, "\t");
         }
         *(*err_msg + total_size - 1) = 0;
         output_fields_free(output_fields);
@@ -820,6 +843,10 @@ int _init_marine(void) {
 
     /* Set the C-language locale to the native environment. */
     setlocale(LC_ALL, "");
+    
+    
+    init_report_message(failure_warning_message, failure_warning_message, 
+                        open_failure_message, read_write_failure_message, read_write_failure_message);
 
     /*
      * Get credential information for later use, and drop privileges
