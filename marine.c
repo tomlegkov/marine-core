@@ -610,10 +610,11 @@ int parse_output_fields(output_fields_t *output_fields, char **fields, unsigned 
             total_size += strlen((gchar *) it->data) + 1;
         }
 
-        *err_msg = (char *)g_malloc0(total_size + 1);
+        *err_msg = (char *)g_malloc0(total_size);
         for (it = invalid_fields; it != NULL; it = g_slist_next(it)) {
             strcat(*err_msg, (gchar *) it->data);
-            strcat(*err_msg, "\t");
+            if (g_slist_next(it) != NULL)
+                strcat(*err_msg, "\t");
         }
         *(*err_msg + total_size - 1) = 0;
         output_fields_free(output_fields);
