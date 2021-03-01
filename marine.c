@@ -34,6 +34,7 @@
 #include "wiretap/wtap_opttypes.h"
 #include "wsutil/filesystem.h"
 #include "wsutil/privileges.h"
+#include "wsutil/report_message.h"
 
 #include "epan/packet.h"
 
@@ -148,6 +149,26 @@ static int *packet_filter_keys[4096];
 static gboolean prefs_loaded = FALSE;
 static gboolean can_init_marine = TRUE;
 
+static void
+failure_warning_message(const char *msg_format, va_list ap) {
+    fprintf(stderr, "marine: ");
+    vfprintf(stderr, msg_format, ap);
+    fprintf(stderr, "\n");
+}
+
+static void
+open_failure_message(const char *filename, int err, gboolean for_writing) {
+    fprintf(stderr, "marine: ");
+    fprintf(stderr, file_open_error_message(err, for_writing), filename);
+    fprintf(stderr, "\n");    
+}
+
+static void
+read_write_failure_message(const char *filename, int err) {
+    fprintf(stderr, "marine: ");
+    fprintf(stderr, "An error occured while reading/writing from the file \"%s\": %s.", filename, g_strerror(err));
+    fprintf(stderr, "\n");    
+}
 
 static void reset_epan_mem(capture_file *cf, epan_dissect_t *edt, gboolean tree, gboolean visual);
 
@@ -820,6 +841,10 @@ int _init_marine(void) {
 
     /* Set the C-language locale to the native environment. */
     setlocale(LC_ALL, "");
+    
+    
+    init_report_message(failure_warning_message, failure_warning_message, 
+                        open_failure_message, read_write_failure_message, read_write_failure_message);
 
     /*
      * Get credential information for later use, and drop privileges
