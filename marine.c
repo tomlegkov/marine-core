@@ -338,7 +338,7 @@ marine_write_specified_fields(packet_filter *filter, epan_dissect_t *edt, char *
                 }
             }
 
-            output[counter++][field_counter] = '\0';
+            output[counter][field_counter] = '\0';
 
             if (filter->macro_ids != NULL) {
                 int *key = g_new(gint, 1);
@@ -346,6 +346,7 @@ marine_write_specified_fields(packet_filter *filter, epan_dissect_t *edt, char *
                 g_hash_table_add(used_macros, key);
             }
         }
+        counter++;
     }
 
     /* get ready for the next packet
