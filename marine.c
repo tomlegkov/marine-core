@@ -599,7 +599,7 @@ int parse_output_fields(output_fields_t *output_fields, char **fields, unsigned 
     }
 
     GSList *it = NULL;
-    GSList *invalid_fields = output_fields_valid(output_fields);
+    GSList *invalid_fields = g_slist_reverse(output_fields_valid(output_fields));
     if (invalid_fields != NULL) {
         if (err_msg == NULL) {
             return -1;
