@@ -494,7 +494,7 @@ marine_inner_dissect_packet(capture_file *cf, packet_filter *filter, const unsig
     }
 
     wtap_rec_init(&rec);
-    ws_buffer_init(&buf, 1514); // TODO support larger packets?
+    ws_buffer_init(&buf, len);
 
     // Copy the data into an epan buffer
     memcpy(ws_buffer_start_ptr(&buf), data, len);
