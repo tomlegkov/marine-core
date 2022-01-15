@@ -17,6 +17,7 @@
 #include "marine.h"
 #include "config.h"
 #include <glib.h>
+#include <stdio.h>
 #include <limits.h>
 #include <locale.h>
 #include <stdlib.h>
@@ -60,6 +61,7 @@
 
 #include "epan/conversation.h"
 #include "epan/epan_dissect.h"
+#include "epan/ftypes/ftypes-int.h"
 #include "epan/tap.h"
 
 #include "caputils/capture-pcap-util.h"
@@ -76,6 +78,8 @@
 #include <pcap/bpf.h>
 
 #define MARINE_DEBUG 0
+#define TREE_SUFFIX ("_tree")
+#define TREE_SUFFIX_LENGTH (sizeof(TREE_SUFFIX))
 
 capture_file cfile;
 
@@ -143,11 +147,23 @@ typedef struct {
     int wtap_encap;
 } packet_filter;
 
+struct marine_extract_proto_tree_data {
+    char *source_buffer;
+    marine_packet_field *field;
+    GHashTable *child_name_set;
+    int has_duplicate_children;
+};
+
 
 static GHashTable *packet_filters;
 static int *packet_filter_keys[4096];
 static gboolean prefs_loaded = FALSE;
 static gboolean can_init_marine = TRUE;
+
+static void reset_epan_mem(capture_file *cf, epan_dissect_t *edt, gboolean tree, gboolean visual);
+static void marine_packet_field_join_children_with_duplicate_names(marine_packet_field *field);
+static void marine_packet_field_free(marine_packet_field *field);
+static void marine_packet_field_load_children(marine_packet_field *tree, proto_node *node);
 
 static void
 failure_warning_message(const char *msg_format, va_list ap) {
@@ -160,17 +176,15 @@ static void
 open_failure_message(const char *filename, int err, gboolean for_writing) {
     fprintf(stderr, "marine: ");
     fprintf(stderr, file_open_error_message(err, for_writing), filename);
-    fprintf(stderr, "\n");    
+    fprintf(stderr, "\n");
 }
 
 static void
 read_write_failure_message(const char *filename, int err) {
     fprintf(stderr, "marine: ");
     fprintf(stderr, "An error occured while reading/writing from the file \"%s\": %s.", filename, g_strerror(err));
-    fprintf(stderr, "\n");    
+    fprintf(stderr, "\n");
 }
-
-static void reset_epan_mem(capture_file *cf, epan_dissect_t *edt, gboolean tree, gboolean visual);
 
 inline static int is_only_bpf(const packet_filter* const filter) {
     return filter->has_bpf && filter->dfcode == NULL && filter->output_fields == NULL;
@@ -269,7 +283,7 @@ gsize get_field_length(GPtrArray *field) {
     gsize len = 1;
 
     for (i = 0; i < g_ptr_array_len(field); i++) {
-        len += strlen((gchar *) g_ptr_array_index(field, i));        
+        len += strlen((gchar *) g_ptr_array_index(field, i));
     }
 
     return len;
@@ -361,7 +375,7 @@ marine_write_specified_fields(packet_filter *filter, epan_dissect_t *edt, char *
                 g_free(g_ptr_array_index(fv_p, j));
             }
 
-            g_ptr_array_free(fv_p, TRUE);  
+            g_ptr_array_free(fv_p, TRUE);
             fields->field_values[i] = NULL;
         }
     }
@@ -562,7 +576,7 @@ int compile_bpf(char *bpf, struct bpf_program *fcode, int wtap_encap, char** err
     if (pc == NULL) {
         return -1;
     }
-    
+
     int compile_status = pcap_compile(pc, fcode, bpf, 0, 0);
     if (err_msg != NULL && compile_status != 0) {
         *err_msg = g_strdup(pcap_geterr(pc));
@@ -843,9 +857,9 @@ int _init_marine(void) {
 
     /* Set the C-language locale to the native environment. */
     setlocale(LC_ALL, "");
-    
-    
-    init_report_message(failure_warning_message, failure_warning_message, 
+
+
+    init_report_message(failure_warning_message, failure_warning_message,
                         open_failure_message, read_write_failure_message, read_write_failure_message);
 
     /*
@@ -964,6 +978,360 @@ WS_DLL_PUBLIC void marine_free(marine_result *ptr) {
         }
         free(ptr);
     }
+}
+
+void
+marine_packet_field_init(marine_packet_field *node, char *name) {
+    node->name = name;
+    node->children = NULL;
+    node->value.type = MARINE_VT_NONE;
+    node->value.len = 0;
+}
+
+static void
+marine_packet_field_add_child(marine_packet_field *parent, marine_packet_field *child) {
+    if (parent->children == NULL) {
+        parent->children = g_array_new(TRUE, TRUE, sizeof(marine_packet_field));
+    }
+    g_array_append_val(parent->children, *child);
+}
+
+static marine_packet_field_value
+marine_packet_field_load_value(field_info *finfo) {
+    ftenum_t ftype = finfo->value.ftype->ftype;
+    marine_packet_field_value value;
+    if (IS_FT_INT(ftype)) {
+        value.type = MARINE_VT_INT;
+        value.len = finfo->value.ftype->wire_size;
+        if (IS_FT_INT32(ftype)) {
+            value.int_value = fvalue_get_sinteger(&finfo->value);
+        }
+        if (IS_FT_INT64(ftype)) {
+            value.int_value = fvalue_get_sinteger64(&finfo->value);
+        }
+    } else if (IS_FT_UINT(ftype)) {
+        value.type = MARINE_VT_UINT;
+
+        value.len = finfo->value.ftype->wire_size;
+        if (IS_FT_UINT32(ftype)) {
+            value.uint_value = fvalue_get_uinteger(&finfo->value);
+        } else if (IS_FT_UINT64(ftype)) {
+            value.uint_value = fvalue_get_uinteger64(&finfo->value);
+        }
+    } else if (ftype == FT_BOOLEAN) {
+        value.type = MARINE_VT_BOOL;
+        value.len = 1;
+        value.bool_value = fvalue_get_uinteger64(&finfo->value);
+    }  else if (ftype == FT_BYTES || ftype == FT_UINT_BYTES) {
+        value.type = MARINE_VT_BYTES;
+        value.len = finfo->value.value.bytes->len;
+        value.str_value = (char *) g_malloc(value.len);
+        memcpy(value.str_value, finfo->value.value.bytes->data, value.len);
+    } else if (ftype != FT_NONE && ftype != FT_PROTOCOL) {
+        value.type = MARINE_VT_STR;
+        value.str_value = fvalue_to_string_repr(NULL, &finfo->value, FTREPR_DISPLAY, finfo->hfinfo->display);
+        value.len = strlen(value.str_value);
+    } else {
+        value.type = MARINE_VT_NONE;
+        value.len = 0;
+    }
+    return value;
+}
+
+static char *
+copy_proto_node_name(const char *abbrev, int is_tree) {
+    if (!is_tree) {
+        return g_strdup(abbrev);
+    }
+    unsigned int size = strlen(abbrev) + TREE_SUFFIX_LENGTH + 1;
+    char *name = (char *) g_malloc(size);
+    g_strlcpy(name, abbrev, size);
+    g_strlcat(name, TREE_SUFFIX, size);
+    return name;
+}
+
+static void
+proto_tree_load_onto_packet(proto_node *node, gpointer data) {
+    struct marine_extract_proto_tree_data *proto_data = (struct marine_extract_proto_tree_data *) data;
+    marine_packet_field *parent = proto_data->field;
+
+    field_info *finfo = node->finfo;
+    ftenum_t ftype = finfo->value.ftype->ftype;
+    const char *abbrev = finfo->hfinfo->abbrev;
+
+    if (proto_data->child_name_set != NULL) {
+        long exists = (long) g_hash_table_lookup(proto_data->child_name_set, abbrev);
+        if (exists == TRUE) {
+            proto_data->has_duplicate_children = TRUE;
+        } else {
+            g_hash_table_insert(proto_data->child_name_set, (gpointer) abbrev, (gpointer) TRUE);
+        }
+    }
+
+    if (node->first_child != NULL && (ftype == FT_NONE || ftype == FT_PROTOCOL)) {
+        marine_packet_field proto;
+        marine_packet_field_init(&proto, copy_proto_node_name(abbrev, FALSE));
+        marine_packet_field_load_children(&proto, node);
+        marine_packet_field_add_child(parent, &proto);
+    } else {
+        marine_packet_field value;
+        marine_packet_field_init(&value,copy_proto_node_name(abbrev, FALSE));
+        value.value = marine_packet_field_load_value(finfo);
+        marine_packet_field_add_child(parent, &value);
+
+        if (node->first_child != NULL) {
+            marine_packet_field tree;
+            marine_packet_field_init(&tree, copy_proto_node_name(abbrev, TRUE));
+            marine_packet_field_load_children(&tree, node);
+            marine_packet_field_add_child(parent, &tree);
+        }
+    }
+}
+
+static void
+group_children_indices_by_name(marine_packet_field *field, GHashTable *indices_by_name) {
+    for (unsigned int i = 0; i < field->children->len; i++) {
+        marine_packet_field child = g_array_index(field->children, marine_packet_field, i);
+        // Track value fields by name and index
+        GArray *indices = (GArray *) g_hash_table_lookup(indices_by_name, child.name);
+        if (indices == NULL) {
+            indices = g_array_new(TRUE, TRUE, sizeof(int));
+            g_hash_table_insert(indices_by_name, child.name, indices);
+        }
+        g_array_append_val(indices, i);
+    }
+}
+
+static void
+join_duplicate_fields(marine_packet_field *field, GArray *new_children, GArray *indices, char *key) {
+    // Join the values for duplicate keys, adding the resulting field to new_children.
+    char *new_name = g_strdup(key);
+    marine_packet_field value_child;
+    marine_packet_field_init(&value_child, new_name);
+    value_child.value.type = MARINE_VT_NONE;
+
+    marine_packet_field tree_child;
+    marine_packet_field_init(&tree_child, copy_proto_node_name(new_name, TRUE));
+    tree_child.value.type = MARINE_VT_NONE;
+    tree_child.value.len = 0;
+
+    GArray *joined_values = (GArray *) g_array_new(TRUE, TRUE, sizeof(marine_packet_field_value));
+    GArray *joined_children = (GArray *) g_array_new(TRUE, TRUE, sizeof(marine_packet_field));
+
+    for (unsigned int indices_index = 0; indices_index < indices->len; indices_index++) {
+        int child_index = g_array_index(indices, int, indices_index);
+        marine_packet_field child = g_array_index(field->children, marine_packet_field, child_index);
+        if (child.children == NULL) {
+            g_array_append_val(joined_values, child.value);
+        } else {
+            g_array_append_vals(joined_children, child.children->data, child.children->len);
+            g_array_free(child.children, TRUE); // All children were copied by value to the new array, so we can safely free them.
+        }
+        free(child.name);
+    }
+
+    if (joined_values->len > 0) {
+        value_child.value.type = MARINE_VT_LIST;
+        value_child.value.list_value = (marine_packet_field_value *) joined_values->data;
+        value_child.value.len = joined_values->len;
+        g_array_free(joined_values, FALSE); // Frees only the array metadata, but not the actual values
+        g_array_append_val(new_children, value_child);
+    } else {
+        g_array_free(joined_values, TRUE);
+        marine_packet_field_free(&value_child);
+    }
+
+    if (joined_children->len > 0) {
+        tree_child.children = joined_children;
+        marine_packet_field_join_children_with_duplicate_names(&tree_child);
+        g_array_append_val(new_children, tree_child);
+    } else {
+        g_array_free(joined_children, TRUE);
+        marine_packet_field_free(&tree_child);
+    }
+}
+
+/**
+ * Joines children with duplicate names for this packet field.
+ *
+ * Doesn't affect fields with no value.
+ *
+ * The algorithm for this function works as follows:
+ *      1. Map each field name to it's indices in the child array (using a GHashTable)
+ *      2. Create a new children array
+ *      3. Add all the `tree` children (those with children and no value) to the new children, do not join them
+ *      4. Add all value field that appear only once - There is no need to join them
+ *      5. Join the values of all fields with the same name, attach them to a new child and add it to the new children array
+ */
+static void
+marine_packet_field_join_children_with_duplicate_names(marine_packet_field *field) {
+    GHashTable *indices_by_name = g_hash_table_new(g_str_hash, g_str_equal);
+    group_children_indices_by_name(field, indices_by_name);
+
+    unsigned int keys_len;
+    gpointer *keys = g_hash_table_get_keys_as_array(indices_by_name, &keys_len);
+    GArray *new_children = (GArray *) g_array_new(TRUE, TRUE, sizeof(marine_packet_field));
+
+    for (unsigned int key_index = 0; key_index < keys_len; key_index++) {
+        char *key = (char *) keys[key_index];
+        GArray *indices = (GArray *) g_hash_table_lookup(indices_by_name, key);
+
+        if (indices->len == 1) {
+            int child_index = g_array_index(indices, int, 0);
+            marine_packet_field child = g_array_index(field->children, marine_packet_field, child_index);
+            g_array_append_val(new_children, child);
+        } else if (indices->len > 1) {
+            join_duplicate_fields(field, new_children, indices, key);
+        }
+        g_array_free(indices, TRUE);
+    }
+
+    g_array_free(field->children, TRUE);
+    field->children = new_children;
+    g_free(keys);
+    g_hash_table_destroy(indices_by_name);
+}
+
+static void
+marine_packet_field_load_children(marine_packet_field *tree, proto_node *node) {
+    struct marine_extract_proto_tree_data child_proto_data = {
+            .field = tree,
+            .child_name_set = g_hash_table_new(g_str_hash, g_str_equal),
+            .has_duplicate_children = FALSE
+    };
+    proto_tree_children_foreach(node, proto_tree_load_onto_packet, &child_proto_data);
+    if (child_proto_data.has_duplicate_children) {
+        marine_packet_field_join_children_with_duplicate_names(tree);
+    }
+    g_hash_table_destroy(child_proto_data.child_name_set);
+}
+
+static void marine_setup_wtap_rec(wtap_rec *rec, int len, int wtap_encap) {
+    // Fake the rec structure for internal dissection
+    rec->rec_type = REC_TYPE_PACKET;
+    rec->presence_flags = WTAP_HAS_CAP_LEN;
+    rec->rec_header.packet_header.caplen = len;
+    rec->rec_header.packet_header.len = len;
+    rec->rec_header.packet_header.pkt_encap = wtap_encap;
+    rec->rec_header.ft_specific_header.record_len = len;
+    rec->rec_header.ft_specific_header.record_type = len;
+    rec->rec_header.syscall_header.record_type = len;
+    rec->rec_header.syscall_header.byte_order = len;
+}
+
+static epan_dissect_t *
+marine_epan_dissect_new(capture_file *cf) {
+    /* The protocol tree will be "visible", i.e., printed, only if we're
+       printing packet details, which is true if we're printing stuff
+       ("print_packet_info" is true) and we're in verbose mode
+       ("packet_details" is true). */
+    epan_dissect_t *edt = epan_dissect_new(cf->epan, TRUE, TRUE);
+    reset_epan_mem(cf, edt, 1, 1);
+    return edt;
+}
+
+static void
+marine_epan_dissect_run(capture_file *cf, epan_dissect_t *edt, wtap_rec *rec, Buffer *buf, int len) {
+    frame_data fdata;
+    column_info *cinfo;
+
+    cf->count++;
+    marine_frame_data_init(&fdata, cf->count, len);
+
+    prime_epan_dissect_with_postdissector_wanted_hfids(edt);
+
+    col_custom_prime_edt(edt, &cf->cinfo);
+    cinfo = NULL;
+
+    if (cf->provider.ref == &fdata) {
+        ref_frame = fdata;
+        cf->provider.ref = &ref_frame;
+    }
+
+    epan_dissect_run_with_taps(edt,
+                               cf->cd_t,
+                               rec,
+                               frame_tvbuff_new_buffer(&cf->provider, &fdata, buf),
+                               &fdata,
+                               cinfo);
+
+    frame_data_set_after_dissect(&fdata, &cum_bytes);
+    prev_dis_frame = fdata;
+    cf->provider.prev_dis = &prev_dis_frame;
+    frame_data_destroy(&fdata);
+}
+
+WS_DLL_PUBLIC marine_packet *
+marine_dissect_all_packet_fields(unsigned char *packet, int len, int wtap_encap) {
+    marine_packet *dst = (marine_packet *) g_malloc(sizeof(marine_packet));
+    dst->layer_tree = (marine_packet_field *) g_malloc(sizeof(marine_packet_field));
+    marine_packet_field_init(dst->layer_tree, NULL);
+    dst->source_packet = packet;
+    dst->source_packet_length = len;
+
+    capture_file *cf = &cfile;
+
+    wtap_rec rec;
+    Buffer buf;
+    epan_dissect_t *edt = NULL;
+    wtap_rec_init(&rec);
+    ws_buffer_init(&buf, len);
+
+    memcpy(ws_buffer_start_ptr(&buf), packet, len);
+
+    marine_setup_wtap_rec(&rec, len, wtap_encap);
+
+    edt = marine_epan_dissect_new(cf);
+
+    marine_epan_dissect_run(cf, edt, &rec, &buf, len);
+    struct marine_extract_proto_tree_data extract_proto_data = {
+            .source_buffer = dst->source_packet,
+            .field = dst->layer_tree,
+            .child_name_set = NULL,
+            .has_duplicate_children = FALSE
+    };
+    proto_tree_children_foreach(edt->tree, proto_tree_load_onto_packet, &extract_proto_data);
+
+    epan_dissect_reset(edt);
+    epan_dissect_free(edt);
+    ws_buffer_free(&buf);
+    wtap_rec_cleanup(&rec);
+    return dst;
+}
+
+static void
+marine_packet_field_value_free(marine_packet_field_value *value) {
+    if (value->type == MARINE_VT_STR || value->type == MARINE_VT_BYTES) {
+        g_free(value->str_value);
+    } else if (value->type == MARINE_VT_LIST) {
+        for (unsigned int i = 0; i < value->len; i++) {
+            marine_packet_field_value_free((marine_packet_field_value *) value->list_value + i);
+        }
+        free(value->list_value);
+    }
+}
+
+static void
+marine_packet_field_free(marine_packet_field *field) {
+    if (field == NULL) return;
+    if (field->name != NULL) {
+        g_free(field->name);
+    }
+    if (field->children != NULL) {
+        for (unsigned int i = 0; i < field->children->len; i++) {
+            marine_packet_field child = g_array_index(field->children, marine_packet_field, i);
+            marine_packet_field_free(&child);
+        }
+        g_array_free(field->children, TRUE);
+    }
+    marine_packet_field_value_free(&field->value);
+}
+
+WS_DLL_PUBLIC void
+marine_packet_free(marine_packet *packet) {
+    marine_packet_field_free(packet->layer_tree);
+    g_free(packet->layer_tree);
+    g_free(packet);
 }
 
 WS_DLL_PUBLIC void set_epan_auto_reset_count(guint32 auto_reset_count) {
