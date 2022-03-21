@@ -1038,14 +1038,35 @@ marine_packet_field_load_value(field_info *finfo) {
     return value;
 }
 
-static char *
-copy_proto_node_name(const char *abbrev, int is_tree) {
-    if (!is_tree) {
-        return g_strdup(abbrev);
+/**
+ * Retrieves the json key of the given {@type proto_node}
+ * This function has a static duplicate in `epan/print.c`,
+ * which we did not touch in order to prevent conflicts with future WS versions
+ */
+static const char *
+proto_node_get_json_key(proto_node *node)
+{
+    const char *json_key;
+    // Check if node has abbreviated name.
+    if (node->finfo->hfinfo->id != hf_text_only) {
+        json_key = node->finfo->hfinfo->abbrev;
+    } else if (node->finfo->rep != NULL) {
+        json_key = node->finfo->rep->representation;
+    } else {
+        json_key = "";
     }
-    unsigned int size = strlen(abbrev) + TREE_SUFFIX_LENGTH + 1;
+
+    return json_key;
+}
+
+static char *
+copy_proto_node_name(const char *node_name, int is_tree) {
+    if (!is_tree) {
+        return g_strdup(node_name);
+    }
+    unsigned int size = strlen(node_name) + TREE_SUFFIX_LENGTH + 1;
     char *name = (char *) g_malloc(size);
-    g_strlcpy(name, abbrev, size);
+    g_strlcpy(name, node_name, size);
     g_strlcat(name, TREE_SUFFIX, size);
     return name;
 }
@@ -1057,31 +1078,31 @@ proto_tree_load_onto_packet(proto_node *node, gpointer data) {
 
     field_info *finfo = node->finfo;
     ftenum_t ftype = finfo->value.ftype->ftype;
-    const char *abbrev = finfo->hfinfo->abbrev;
+    const char *node_name = proto_node_get_json_key(node);
 
     if (proto_data->child_name_set != NULL) {
-        long exists = (long) g_hash_table_lookup(proto_data->child_name_set, abbrev);
+        long exists = (long) g_hash_table_lookup(proto_data->child_name_set, node_name);
         if (exists == TRUE) {
             proto_data->has_duplicate_children = TRUE;
         } else {
-            g_hash_table_insert(proto_data->child_name_set, (gpointer) abbrev, (gpointer) TRUE);
+            g_hash_table_insert(proto_data->child_name_set, (gpointer) node_name, (gpointer) TRUE);
         }
     }
 
     if (node->first_child != NULL && (ftype == FT_NONE || ftype == FT_PROTOCOL)) {
         marine_packet_field proto;
-        marine_packet_field_init(&proto, copy_proto_node_name(abbrev, FALSE));
+        marine_packet_field_init(&proto, copy_proto_node_name(node_name, FALSE));
         marine_packet_field_load_children(&proto, node);
         marine_packet_field_add_child(parent, &proto);
     } else {
         marine_packet_field value;
-        marine_packet_field_init(&value,copy_proto_node_name(abbrev, FALSE));
+        marine_packet_field_init(&value,copy_proto_node_name(node_name, FALSE));
         value.value = marine_packet_field_load_value(finfo);
         marine_packet_field_add_child(parent, &value);
 
         if (node->first_child != NULL) {
             marine_packet_field tree;
-            marine_packet_field_init(&tree, copy_proto_node_name(abbrev, TRUE));
+            marine_packet_field_init(&tree, copy_proto_node_name(node_name, TRUE));
             marine_packet_field_load_children(&tree, node);
             marine_packet_field_add_child(parent, &tree);
         }
