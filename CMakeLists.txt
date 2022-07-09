@@ -2539,8 +2539,10 @@ if(BUILD_marine)
 			sync_pipe_write.c
 			tshark-tap-register.c
 			marine.c
+			marine-prefs.c
 			${TSHARK_TAP_SRC}
 			marine.h
+			marine-prefs.h
 			)
 
 	# Uncomment these lines to run Marine as a binary (after you add a main() entry point)
