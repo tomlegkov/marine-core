@@ -120,3 +120,10 @@ Since Wireshark stores a lot of internal state, we need to clear it every once i
 
 The API supplied by Marine allows to specify how many packets to parse before clearing the internal state with:
 `void set_epan_auto_reset_count(guint32 auto_reset_count);`
+
+### Upgrading Wireshark Version
+Use `./marine-rebaase.sh` to rebase onto a wireshark version of your choice.
+For example:
+```bash
+./marine-rebase.sh --onto=wireshark-3.4.16
+```
