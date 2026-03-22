@@ -18,4 +18,7 @@ COPY . /marine
 
 WORKDIR /build
 
-RUN cmake3 -DCMAKE_INSTALL_PREFIX=/usr -DENABLE_LTO=ON -DLUAJIT=ON -GNinja /marine && ninja
+RUN cmake3 -DCMAKE_INSTALL_PREFIX=/usr -DENABLE_LTO=ON -DLUAJIT=ON -GNinja /marine && \
+    ninja && \
+    # Delete some intermediate compilcation artifacts \
+    find . -depth \! -path './run/*' -a \! -path . -a \! -path ./run -delete
