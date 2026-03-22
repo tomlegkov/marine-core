@@ -1453,3 +1453,7 @@ static void reset_epan_mem(capture_file *cf, epan_dissect_t *edt, gboolean tree,
 WS_DLL_PUBLIC void marine_report_fields(void) {
     proto_registrar_dump_fields();
 }
+
+WS_DLL_PUBLIC char* get_wireshark_version(void) {
+    return VERSION;
+}
