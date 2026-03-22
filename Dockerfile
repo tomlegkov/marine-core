@@ -10,4 +10,4 @@ COPY . /marine
 
 WORKDIR /build
 
-RUN cmake3 -DCMAKE_INSTALL_PREFIX=/usr -GNinja /marine && ninja
+RUN cmake3 -DCMAKE_INSTALL_PREFIX=/usr -DLUAJIT=ON -GNinja /marine && ninja
