@@ -1,7 +1,5 @@
 FROM quay.io/pypa/manylinux2014_x86_64
 
-RUN yum install -y epel-release centos-release-scl
-
 COPY redhat/rpms.txt /tmp/
 
 RUN xargs --arg-file /tmp/rpms.txt yum install -y && yum clean all && rm -rf /var/yum/cache
