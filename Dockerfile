@@ -18,4 +18,4 @@ COPY . /marine
 
 WORKDIR /build
 
-RUN cmake3 -DCMAKE_INSTALL_PREFIX=/usr -DLUAJIT=ON -GNinja /marine && ninja
+RUN cmake3 -DCMAKE_INSTALL_PREFIX=/usr -DENABLE_LTO=ON -DLUAJIT=ON -GNinja /marine && ninja
