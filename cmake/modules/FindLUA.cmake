@@ -19,9 +19,13 @@ FindWSWinLibs("lua-5*" "LUA_HINTS")
 
 if(NOT WIN32)
   find_package(PkgConfig)
-  pkg_search_module(LUA lua5.2 lua-5.2 lua52 lua5.1 lua-5.1 lua51)
-  if(NOT LUA_FOUND)
-      pkg_search_module(LUA "lua<=5.2.99")
+  if (LUAJIT)
+      pkg_search_module(LUA REQUIRED luajit)
+  else()
+      pkg_search_module(LUA lua5.2 lua-5.2 lua52 lua5.1 lua-5.1 lua51)
+      if(NOT LUA_FOUND)
+          pkg_search_module(LUA "lua<=5.2.99")
+      endif()
   endif()
 endif()
 
@@ -54,8 +58,13 @@ if ( LUA_INCLUDE_DIR STREQUAL LUA_INC_SUFFIX )
   set( LUA_INC_SUFFIX "")
 endif()
 
+set(LUA_LIBRARY_NAMES lua${LUA_INC_SUFFIX} lua52 lua5.2 lua-5.2 lua51 lua5.1 lua-5.1 lua)
+if(LUAJIT)
+  list(APPEND LUA_LIBRARY_NAMES luajit-5.1 luajit)
+endif()
+
 FIND_LIBRARY(LUA_LIBRARY
-  NAMES lua${LUA_INC_SUFFIX} lua52 lua5.2 lua-5.2 lua51 lua5.1 lua-5.1 lua
+  NAMES ${LUA_LIBRARY_NAMES}
   HINTS
     "${LUA_LIBDIR}"
     "$ENV{LUA_DIR}"

@@ -778,6 +778,11 @@ wslua_get_expert_field(const int group, const int severity)
     return &ei_lua_error;
 }
 
+#ifdef LUA_LJDIR
+#define USING_LUAJIT
+#endif
+
+#ifndef USING_LUAJIT
 static void *
 wslua_allocf(void *ud _U_, void *ptr, size_t osize _U_, size_t nsize)
 {
@@ -785,6 +790,7 @@ wslua_allocf(void *ud _U_, void *ptr, size_t osize _U_, size_t nsize)
      * Furthermore it simplifies error handling by aborting on OOM */
     return g_realloc(ptr, nsize);
 }
+#endif
 
 void wslua_init(register_cb cb, gpointer client_data) {
     gchar* filename;
@@ -901,7 +907,11 @@ void wslua_init(register_cb cb, gpointer client_data) {
     wslua_logger = ops ? ops->logger : basic_logger;
 
     if (!L) {
+#ifdef USING_LUAJIT
+        L = luaL_newstate();
+#else
         L = lua_newstate(wslua_allocf, NULL);
+#endif // LUAJIT
     }
 
     WSLUA_INIT(L);
