@@ -335,7 +335,7 @@ marine_write_specified_fields(packet_filter *filter, epan_dissect_t *edt, char *
 
     proto_tree_children_foreach(edt->tree, proto_tree_get_node_field_values, &data);
 
-    GHashTable *used_macros = g_hash_table_new(g_int_hash, g_int_equal);
+    GHashTable *used_macros = g_hash_table_new_full(g_int_hash, g_int_equal, g_free, NULL);
 
     //char *output = (char *) g_malloc0(4096); // todo this can overflow
     int counter = 0;
@@ -642,7 +642,7 @@ WS_DLL_PUBLIC int validate_fields(char **fields, unsigned int fields_len, char *
 
 gboolean* last_seen(const int* arr, int len) {
     gboolean *ret_arr = g_new0(gboolean, len);
-    GHashTable *seen_values = g_hash_table_new(g_int_hash, g_int_equal);
+    GHashTable *seen_values = g_hash_table_new_full(g_int_hash, g_int_equal, g_free, NULL);
 
     for (int i = len - 1; i >= 0; i--) {
         if (!g_hash_table_contains(seen_values, (arr + i))) {
@@ -724,7 +724,7 @@ WS_DLL_PUBLIC int marine_add_filter(char *bpf, char *dfilter, char **fields, int
     int size = g_hash_table_size(packet_filters);
     int *key = g_new0(gint, 1);
     *key = size;
-    packet_filter *filter = (packet_filter *) malloc(sizeof(packet_filter));
+    packet_filter *filter = g_new0(packet_filter, 1);
     filter->has_bpf = has_bpf;
     filter->fcode = fcode;
     filter->dfcode = dfcode;
@@ -942,15 +942,15 @@ WS_DLL_PUBLIC void destroy_marine(void) {
             output_fields_free(filter->output_fields);
         }
         if (filter->macro_ids) {
-            free(filter->macro_ids);
+            g_free(filter->macro_ids);
         }
         if (filter->last_in_macro) {
-            free(filter->last_in_macro);
+            g_free(filter->last_in_macro);
         }
         if (filter->fixed_index_map) {
             g_free(filter->fixed_index_map);
         }
-        free(filter);
+        g_free(filter);
     }
 
     reset_tap_listeners();
@@ -972,10 +972,10 @@ WS_DLL_PUBLIC void marine_free(marine_result *ptr) {
             unsigned int i;
             for (i = 0; i < ptr->len; i++) {
                 if (ptr->output[i]) {
-                    free(ptr->output[i]);    
+                    g_free(ptr->output[i]);
                 }
             }
-            free(ptr->output);
+            g_free(ptr->output);
         }
         free(ptr);
     }
