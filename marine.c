@@ -931,6 +931,14 @@ WS_DLL_PUBLIC void destroy_marine(void) {
             dfilter_free(filter->dfcode);
         }
         if (filter->output_fields) {
+            if (filter->output_fields->field_values) {
+                for (unsigned int j = 0; j < filter->output_fields->fields->len; j++) {
+                    if (filter->output_fields->field_values[j]) {
+                        g_ptr_array_free(filter->output_fields->field_values[j], TRUE);
+                        filter->output_fields->field_values[j] = NULL;
+                    }
+                }
+            }
             output_fields_free(filter->output_fields);
         }
         if (filter->macro_ids) {
