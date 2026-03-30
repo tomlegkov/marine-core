@@ -204,6 +204,9 @@ static void format_field_values(output_fields_t *fields, gpointer field_index, g
     /* Essentially: fieldvalues[indx] is a 'GPtrArray *' with each array entry */
     /*  pointing to a string which is (part of) the final output string.       */
 
+    if (fields->field_values[indx] == NULL) {
+        fields->field_values[indx] = g_ptr_array_new();
+    }
     fv_p = fields->field_values[indx];
 
     switch (fields->occurrence) {
@@ -309,11 +312,11 @@ marine_write_specified_fields(packet_filter *filter, epan_dissect_t *edt, char *
     for (i = 0; i < fields->fields->len; ++i) {
         unsigned int fixed_index = filter->fixed_index_map[i];
 
-        if (used_macros != NULL && (g_hash_table_contains(used_macros, filter->macro_ids + i) || (g_ptr_array_len(fields->field_values[fixed_index]) == 0 && !filter->last_in_macro[i]))) {
+        if (used_macros != NULL && (g_hash_table_contains(used_macros, filter->macro_ids + i) || (fields->field_values[fixed_index] == NULL && !filter->last_in_macro[i]))) {
             continue;
         }
 
-        if (g_ptr_array_len(fields->field_values[fixed_index]) > 0) {
+        if (fields->field_values[fixed_index] != NULL && g_ptr_array_len(fields->field_values[fixed_index]) > 0) {
             GPtrArray *fv_p;
             gsize j;
             fv_p = fields->field_values[fixed_index];
@@ -341,7 +344,7 @@ marine_write_specified_fields(packet_filter *filter, epan_dissect_t *edt, char *
      * This is done in a different loop as we use fixed_index and might go over the same field twice */
     for (i = 0; i < fields->fields->len; i++) {
         GPtrArray *fv_p = fields->field_values[i];
-        if (g_ptr_array_len(fv_p) > 0) {
+        if (fv_p != NULL && g_ptr_array_len(fv_p) > 0) {
             gsize j;
             for (j = 0; j < g_ptr_array_len(fv_p); j++) {
                 g_free(g_ptr_array_index(fv_p, j));
@@ -726,11 +729,8 @@ WS_DLL_PUBLIC int marine_add_filter(char *bpf, char *dfilter, char **fields, int
             filter->fixed_index_map[fi] = GPOINTER_TO_UINT(g_hash_table_lookup(packet_output_fields->field_indicies, field)) - 1;
         }
 
-        /* Pre-allocate field_values array with reusable GPtrArrays */
+        /* Allocate field_values pointer array (GPtrArrays created lazily per field) */
         packet_output_fields->field_values = g_new0(GPtrArray *, packet_output_fields->fields->len);
-        for (fi = 0; fi < packet_output_fields->fields->len; fi++) {
-            packet_output_fields->field_values[fi] = g_ptr_array_new();
-        }
     } else {
         filter->fixed_index_map = NULL;
     }
