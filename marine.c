@@ -298,41 +298,6 @@ marine_write_specified_fields(packet_filter *filter, epan_dissect_t *edt, char *
     data.fields = fields;
     data.edt = edt;
 
-    if (NULL == fields->field_indicies) {
-        /* Prepare a lookup table from string abbreviation for field to its index. */
-        fields->field_indicies = g_hash_table_new(g_str_hash, g_str_equal);
-
-        i = 0;
-        while (i < fields->fields->len) {
-            gchar *field = (gchar *) g_ptr_array_index(fields->fields, i);
-            /* Store field indicies +1 so that zero is not a valid value,
-             * and can be distinguished from NULL as a pointer.
-             */
-            ++i;
-            g_hash_table_insert(fields->field_indicies, field, GUINT_TO_POINTER(i));
-        }
-
-        /* Pre-compute the fixed_index mapping to avoid per-packet hash lookups */
-        filter->fixed_index_map = (unsigned int *) g_malloc(sizeof(unsigned int) * fields->fields->len);
-        for (i = 0; i < fields->fields->len; i++) {
-            gchar *field = (gchar *) g_ptr_array_index(fields->fields, i);
-            filter->fixed_index_map[i] = GPOINTER_TO_UINT(g_hash_table_lookup(fields->field_indicies, field)) - 1;
-        }
-    }
-
-    /* Array buffer to store values for this packet              */
-    /*  Allocate an array for the 'GPtrarray *' the first time   */
-    /*   ths function is invoked for a file;                     */
-    /*  Any and all 'GPtrArray *' are freed (after use) each     */
-    /*   time (each packet) this function is invoked for a flle. */
-    /* XXX: ToDo: use packet-scope'd memory & (if/when implemented) wmem ptr_array */
-    if (NULL == fields->field_values) {
-        fields->field_values = g_new0(GPtrArray * , fields->fields->len);  /* free'd in output_fields_free() */
-        for (i = 0; i < fields->fields->len; i++) {
-            fields->field_values[i] = g_ptr_array_new();
-        }
-    }
-
     proto_tree_children_foreach(edt->tree, proto_tree_get_node_field_values, &data);
 
     GHashTable *used_macros = g_hash_table_new_full(g_int_hash, g_int_equal, g_free, NULL);
@@ -737,9 +702,34 @@ WS_DLL_PUBLIC int marine_add_filter(char *bpf, char *dfilter, char **fields, int
     filter->output_fields = packet_output_fields;
     filter->macro_ids = macro_indices_copy;
     filter->last_in_macro = last_in_macro;
-    /* fixed_index_map is lazily initialized on first dissection and depends
-     * on output_fields->fields being immutable after filter creation. */
-    filter->fixed_index_map = NULL;
+
+    /* Pre-compute field lookup structures at filter creation time. */
+    if (packet_output_fields != NULL) {
+        gsize fi;
+        /* Build string -> index lookup table */
+        packet_output_fields->field_indicies = g_hash_table_new(g_str_hash, g_str_equal);
+        fi = 0;
+        while (fi < packet_output_fields->fields->len) {
+            gchar *field = (gchar *) g_ptr_array_index(packet_output_fields->fields, fi);
+            ++fi;
+            g_hash_table_insert(packet_output_fields->field_indicies, field, GUINT_TO_POINTER(fi));
+        }
+
+        /* Pre-compute fixed_index mapping to avoid per-packet hash lookups */
+        filter->fixed_index_map = (unsigned int *) g_malloc(sizeof(unsigned int) * packet_output_fields->fields->len);
+        for (fi = 0; fi < packet_output_fields->fields->len; fi++) {
+            gchar *field = (gchar *) g_ptr_array_index(packet_output_fields->fields, fi);
+            filter->fixed_index_map[fi] = GPOINTER_TO_UINT(g_hash_table_lookup(packet_output_fields->field_indicies, field)) - 1;
+        }
+
+        /* Pre-allocate field_values array with reusable GPtrArrays */
+        packet_output_fields->field_values = g_new0(GPtrArray *, packet_output_fields->fields->len);
+        for (fi = 0; fi < packet_output_fields->fields->len; fi++) {
+            packet_output_fields->field_values[fi] = g_ptr_array_new();
+        }
+    } else {
+        filter->fixed_index_map = NULL;
+    }
     filter->expected_output_len = output_count;
     filter->wtap_encap = wtap_encap;
     g_hash_table_insert(packet_filters, key, filter);
