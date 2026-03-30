@@ -46,7 +46,7 @@ jobs:
 
     - name: 'Generate benchmark caps'
       if: steps.cache-caps.outputs.cache-hit != 'true'
-      run: pip3 install pypacker && python3 cap_maker.py
+      run: pip3 install pypacker tqdm && python3 cap_maker.py
 
     - name: 'Benchmark ethernet'
       run: ./build/run/marine_benchmark ethernet_benchmark.cap 1 | tee ethernet_benchmark.log

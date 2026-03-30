@@ -1,3 +1,12 @@
+#!/usr/bin/env -S uv run
+# /// script
+# requires-python = ">=3.10"
+# dependencies = [
+#     "pypacker",
+#     "tqdm",
+# ]
+# ///
+
 import struct
 import random
 from typing import List, Union, Type, Iterator
@@ -7,6 +16,7 @@ from pypacker.pypacker import Packet
 from pypacker.layer12 import ethernet, radiotap, ieee80211, llc
 from pypacker.layer3 import ip
 from pypacker.layer4 import tcp, udp
+from tqdm import tqdm
 
 ETHERNET_PCAP_HEADER = bytes.fromhex("D4C3B2A10200040000000000000000000000040001000000")
 RADIOTAP_PCAP_HEADER = bytes.fromhex("D4C3B2A10200040000000000000000000000040017000000")
@@ -21,7 +31,7 @@ PORTS = list(range(4000, 4020))
 PACKETS_PER_CONVERSATION = 1000
 
 # Split evenly between TCP and UDP
-CONVERSATIONS = 420
+CONVERSATIONS = 210
 
 
 def write_cap(file_path: str, packets: List[bytes], pcap_header: bytes):
@@ -62,7 +72,7 @@ def generate_cap_file(
     packet_base: Packet, conversation_count: int, cap_header: bytes, cap_name: str
 ):
     packets: List[bytes] = []
-    for _ in range(conversation_count // 2):
+    for _ in tqdm(range(conversation_count // 2), desc=f"Generating {cap_name}"):
         packets.extend(create_conversation(packet_base, tcp.TCP))
         packets.extend(create_conversation(packet_base, udp.UDP))
 
