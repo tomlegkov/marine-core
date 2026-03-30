@@ -242,7 +242,10 @@ static void format_field_values(output_fields_t *fields, gpointer field_index, g
                  * character as a separator between the previous element
                  * and this element.
                  */
-                g_ptr_array_add(fv_p, (gpointer) g_strdup_printf("%c", fields->aggregator));
+                gchar *agg = (gchar *) g_malloc(2);
+                agg[0] = fields->aggregator;
+                agg[1] = '\0';
+                g_ptr_array_add(fv_p, (gpointer) agg);
             }
             break;
         default:
@@ -338,21 +341,18 @@ marine_write_specified_fields(packet_filter *filter, epan_dissect_t *edt, char *
 
         if (NULL != fields->field_values[fixed_index]) {
             GPtrArray *fv_p;
-            gchar *str;
             gsize j;
             fv_p = fields->field_values[fixed_index];
-            output[counter] = (gchar *) g_malloc0(get_field_length(fv_p));
-            int field_counter = 0;
 
-            /* Output the array of (partial) field values */
+            output[counter] = (gchar *) g_malloc(get_field_length(fv_p));
+            gsize offset = 0;
             for (j = 0; j < g_ptr_array_len(fv_p); j++) {
-                str = (gchar *) g_ptr_array_index(fv_p, j);
-                for (char *p = str; *p != '\0'; p++) {
-                    output[counter][field_counter++] = *p;
-                }
+                gchar *str = (gchar *) g_ptr_array_index(fv_p, j);
+                gsize slen = strlen(str);
+                memcpy(output[counter] + offset, str, slen);
+                offset += slen;
             }
-
-            output[counter][field_counter] = '\0';
+            output[counter][offset] = '\0';
 
             if (filter->macro_ids != NULL) {
                 int *key = g_new(gint, 1);
