@@ -143,6 +143,7 @@ typedef struct {
     output_fields_t *output_fields;
     int *macro_ids;
     gboolean *last_in_macro;
+    unsigned int *fixed_index_map;
     unsigned int expected_output_len;
     int wtap_encap;
 } packet_filter;
@@ -310,6 +311,13 @@ marine_write_specified_fields(packet_filter *filter, epan_dissect_t *edt, char *
             ++i;
             g_hash_table_insert(fields->field_indicies, field, GUINT_TO_POINTER(i));
         }
+
+        /* Pre-compute the fixed_index mapping to avoid per-packet hash lookups */
+        filter->fixed_index_map = (unsigned int *) g_malloc(sizeof(unsigned int) * fields->fields->len);
+        for (i = 0; i < fields->fields->len; i++) {
+            gchar *field = (gchar *) g_ptr_array_index(fields->fields, i);
+            filter->fixed_index_map[i] = GPOINTER_TO_UINT(g_hash_table_lookup(fields->field_indicies, field)) - 1;
+        }
     }
 
     /* Array buffer to store values for this packet              */
@@ -332,8 +340,7 @@ marine_write_specified_fields(packet_filter *filter, epan_dissect_t *edt, char *
     //char *output = (char *) g_malloc0(4096); // todo this can overflow
     int counter = 0;
     for (i = 0; i < fields->fields->len; ++i) {
-        gchar *field = (gchar *) g_ptr_array_index(fields->fields, i);
-        unsigned int fixed_index = GPOINTER_TO_UINT(g_hash_table_lookup(fields->field_indicies, field)) - 1;
+        unsigned int fixed_index = filter->fixed_index_map[i];
 
         if (filter->macro_ids != NULL && (g_hash_table_contains(used_macros, filter->macro_ids + i) || (g_ptr_array_len(fields->field_values[fixed_index]) == 0 && !filter->last_in_macro[i]))) {
             continue;
@@ -724,6 +731,7 @@ WS_DLL_PUBLIC int marine_add_filter(char *bpf, char *dfilter, char **fields, int
     filter->output_fields = packet_output_fields;
     filter->macro_ids = macro_indices_copy;
     filter->last_in_macro = last_in_macro;
+    filter->fixed_index_map = NULL;
     filter->expected_output_len = output_count;
     filter->wtap_encap = wtap_encap;
     g_hash_table_insert(packet_filters, key, filter);
@@ -930,6 +938,9 @@ WS_DLL_PUBLIC void destroy_marine(void) {
         }
         if (filter->last_in_macro) {
             free(filter->last_in_macro);
+        }
+        if (filter->fixed_index_map) {
+            g_free(filter->fixed_index_map);
         }
         free(filter);
     }
