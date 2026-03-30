@@ -494,14 +494,13 @@ marine_inner_dissect_packet(capture_file *cf, packet_filter *filter, const unsig
     epan_dissect_t *edt = NULL;
 
     if (filter->has_bpf) {
-        struct pcap_pkthdr *hdr = (struct pcap_pkthdr *) malloc(sizeof(struct pcap_pkthdr));
-        hdr->len = len;
-        hdr->caplen = len;
-        if (!pcap_offline_filter(&filter->fcode, hdr, data)) {
-            free(hdr);
-            return 0;
+        struct pcap_pkthdr hdr = {
+            .len = len,
+            .caplen = len
+        };
+        if (!pcap_offline_filter(&filter->fcode, &hdr, data)) {
+            return FALSE;
         }
-        free(hdr);
         if (is_only_bpf(filter)) {
             return TRUE;
         }
@@ -514,15 +513,15 @@ marine_inner_dissect_packet(capture_file *cf, packet_filter *filter, const unsig
     memcpy(ws_buffer_start_ptr(&buf), data, len);
 
     // Fake the rec structure for internal dissection
-    (&rec)->rec_type = REC_TYPE_PACKET;
-    (&rec)->presence_flags = WTAP_HAS_CAP_LEN;
-    (&rec)->rec_header.packet_header.caplen = len;
-    (&rec)->rec_header.packet_header.len = len;
-    (&rec)->rec_header.packet_header.pkt_encap = filter->wtap_encap;
-    (&rec)->rec_header.ft_specific_header.record_len = len;
-    (&rec)->rec_header.ft_specific_header.record_type = len;
-    (&rec)->rec_header.syscall_header.record_type = len;
-    (&rec)->rec_header.syscall_header.byte_order = len;
+    rec.rec_type = REC_TYPE_PACKET;
+    rec.presence_flags = WTAP_HAS_CAP_LEN;
+    rec.rec_header.packet_header.caplen = len;
+    rec.rec_header.packet_header.len = len;
+    rec.rec_header.packet_header.pkt_encap = filter->wtap_encap;
+    rec.rec_header.ft_specific_header.record_len = len;
+    rec.rec_header.ft_specific_header.record_type = len;
+    rec.rec_header.syscall_header.record_type = len;
+    rec.rec_header.syscall_header.byte_order = len;
 
 
     /* The protocol tree will be "visible", i.e., printed, only if we're
