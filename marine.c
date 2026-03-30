@@ -491,7 +491,7 @@ static int
 marine_inner_dissect_packet(capture_file *cf, packet_filter *filter, const unsigned char *data, int len, char **output) {
     wtap_rec rec;
     Buffer buf;
-    epan_dissect_t *edt = NULL;
+    epan_dissect_t edt;
 
     if (filter->has_bpf) {
         struct pcap_pkthdr hdr = {
@@ -523,26 +523,13 @@ marine_inner_dissect_packet(capture_file *cf, packet_filter *filter, const unsig
     rec.rec_header.syscall_header.record_type = len;
     rec.rec_header.syscall_header.byte_order = len;
 
+    epan_dissect_init(&edt, cf->epan, TRUE, TRUE);
 
-    /* The protocol tree will be "visible", i.e., printed, only if we're
-       printing packet details, which is true if we're printing stuff
-       ("print_packet_info" is true) and we're in verbose mode
-       ("packet_details" is true). */
-    edt = epan_dissect_new(cf->epan, TRUE, TRUE);
+    reset_epan_mem(cf, &edt, 1, 1);
 
-    /*
-     * Force synchronous resolution of IP addresses; we're doing only
-     * one pass, so we can't do it in the background and fix up past
-     * dissections.
-     */
-    //set_resolution_synchrony(TRUE); // TODO can we remove c-ares?
+    int passed = marine_process_packet(cf, &edt, filter, &buf, &rec, len, output);
 
-    reset_epan_mem(cf, edt, 1, 1);
-
-    int passed = marine_process_packet(cf, edt, filter, &buf, &rec, len, output);
-
-    if (edt)
-        epan_dissect_free(edt);
+    epan_dissect_cleanup(&edt);
 
     ws_buffer_free(&buf);
     wtap_rec_cleanup(&rec);
