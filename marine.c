@@ -484,6 +484,8 @@ marine_process_packet(capture_file *cf, epan_dissect_t *edt, packet_filter *filt
     cf->provider.prev_cap = &prev_cap_frame;
 
     if (edt) {
+        /* epan_dissect_reset leaves edt in a state safe for
+         * epan_dissect_cleanup (called in marine_inner_dissect_packet). */
         epan_dissect_reset(edt);
         frame_data_destroy(&fdata);
     }
@@ -494,6 +496,7 @@ static int
 marine_inner_dissect_packet(capture_file *cf, packet_filter *filter, const unsigned char *data, int len, char **output) {
     wtap_rec rec;
     Buffer buf;
+    G_STATIC_ASSERT(sizeof(epan_dissect_t) <= 4096);
     epan_dissect_t edt;
 
     if (filter->has_bpf) {
@@ -526,12 +529,15 @@ marine_inner_dissect_packet(capture_file *cf, packet_filter *filter, const unsig
     rec.rec_header.syscall_header.record_type = len;
     rec.rec_header.syscall_header.byte_order = len;
 
+    /* create_proto_tree=TRUE, proto_tree_visible=TRUE: both required for
+     * display filter evaluation and field extraction. */
     epan_dissect_init(&edt, cf->epan, TRUE, TRUE);
 
     reset_epan_mem(cf, &edt, 1, 1);
 
     int passed = marine_process_packet(cf, &edt, filter, &buf, &rec, len, output);
 
+    /* Safe after epan_dissect_reset was called in marine_process_packet. */
     epan_dissect_cleanup(&edt);
 
     ws_buffer_free(&buf);
@@ -731,6 +737,8 @@ WS_DLL_PUBLIC int marine_add_filter(char *bpf, char *dfilter, char **fields, int
     filter->output_fields = packet_output_fields;
     filter->macro_ids = macro_indices_copy;
     filter->last_in_macro = last_in_macro;
+    /* fixed_index_map is lazily initialized on first dissection and depends
+     * on output_fields->fields being immutable after filter creation. */
     filter->fixed_index_map = NULL;
     filter->expected_output_len = output_count;
     filter->wtap_encap = wtap_encap;
@@ -1446,6 +1454,9 @@ static void reset_epan_mem(capture_file *cf, epan_dissect_t *edt, gboolean tree,
     epan_dissect_cleanup(edt);
     epan_free(cf->epan);
 
+    /* WARNING: output_fields and fixed_index_map on each packet_filter survive
+     * this reset. If output_fields is ever freed/recreated here,
+     * fixed_index_map must be invalidated (set to NULL). */
     cf->epan = marine_epan_new(cf);
     epan_dissect_init(edt, cf->epan, tree, visual);
     cf->count = 0;
