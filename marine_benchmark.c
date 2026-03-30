@@ -7,6 +7,9 @@
 #include <time.h>
 #include <stdlib.h>
 
+#define BENCH_RUNS 7
+#define BENCH_KEEP 3
+
 typedef struct {
     char *title;
     char *bpf;
@@ -52,12 +55,26 @@ int load_cap(char *file, packet **packets, char errbuff[PCAP_ERRBUF_SIZE]) {
     return p_count;
 }
 
-void print_benchmark_results(struct timespec start_time, struct timespec end_time, size_t memory_start, size_t memory_end, int packet_len) {
-    double total_time = (end_time.tv_sec - start_time.tv_sec) + ((end_time.tv_nsec - start_time.tv_nsec) * 1e-9);
-    double pps = packet_len / total_time;
+int compare_doubles(const void *a, const void *b) {
+    double da = *(const double *)a;
+    double db = *(const double *)b;
+    return (da > db) - (da < db);
+}
+
+double average_fastest_runs(double times[], int n, int keep) {
+    qsort(times, n, sizeof(double), compare_doubles);
+    double sum = 0;
+    for (int i = 0; i < keep; i++) {
+        sum += times[i];
+    }
+    return sum / keep;
+}
+
+void print_benchmark_results(double avg_time, size_t memory_start, size_t memory_end, int packet_len) {
+    double pps = packet_len / avg_time;
     double memory_usage = (memory_end - memory_start) / 1024.0 / 1024.0;
-    printf("%d packets took: %f Sec, which is %f pps!\nmemory usage: %lf MB\n", packet_len, total_time, pps,
-           memory_usage);
+    printf("%d packets took: %f Sec (avg of fastest %d/%d runs), which is %f pps!\nmemory usage: %lf MB\n",
+           packet_len, avg_time, BENCH_KEEP, BENCH_RUNS, pps, memory_usage);
 }
 
 void benchmark(packet packets[], int packet_len, char *bpf, char *display_filter, char *fields[], int* macro_indices, unsigned int fields_len, int encapsulation_type) {
@@ -65,25 +82,31 @@ void benchmark(packet packets[], int packet_len, char *bpf, char *display_filter
     int filter_id = marine_add_filter(bpf, display_filter, fields, macro_indices, fields_len, encapsulation_type, &err_msg);
     struct timespec start_time, end_time;
 
-
     if (filter_id < 0) {
         fprintf(stderr, "Error creating filter id: %s\n", err_msg);
         marine_free_err_msg(err_msg);
         return;
     }
 
+    double times[BENCH_RUNS];
     size_t memory_start = get_current_rss();
-    clock_gettime(CLOCK_MONOTONIC_RAW, &start_time);
-    for (int i = 0; i < packet_len; ++i) {
-        packet p = packets[i];
-        marine_result *result = marine_dissect_packet(filter_id, (char *) p.data, p.header->len);
-        assert(result->result == 1);
-        marine_free(result);
-    }
-    clock_gettime(CLOCK_MONOTONIC_RAW, &end_time);
-    size_t memory_end = get_current_rss();
 
-    print_benchmark_results(start_time, end_time, memory_start, memory_end, packet_len);
+    for (int run = 0; run < BENCH_RUNS; run++) {
+        clock_gettime(CLOCK_MONOTONIC_RAW, &start_time);
+        for (int i = 0; i < packet_len; ++i) {
+            packet p = packets[i];
+            marine_result *result = marine_dissect_packet(filter_id, (char *) p.data, p.header->len);
+            assert(result->result == 1);
+            marine_free(result);
+        }
+        clock_gettime(CLOCK_MONOTONIC_RAW, &end_time);
+        times[run] = (end_time.tv_sec - start_time.tv_sec) + ((end_time.tv_nsec - start_time.tv_nsec) * 1e-9);
+        printf("  run %d/%d: %f sec\n", run + 1, BENCH_RUNS, times[run]);
+    }
+
+    size_t memory_end = get_current_rss();
+    double avg_time = average_fastest_runs(times, BENCH_RUNS, BENCH_KEEP);
+    print_benchmark_results(avg_time, memory_start, memory_end, packet_len);
 }
 
 
@@ -93,19 +116,25 @@ int print_title(char *str) {
 
 void benchmark_dissect_all_packet_fields(packet packets[], int packet_len, int encapsulation_type) {
     struct timespec start_time, end_time;
-
+    double times[BENCH_RUNS];
 
     size_t memory_start = get_current_rss();
-    clock_gettime(CLOCK_MONOTONIC_RAW, &start_time);
-    for (int i = 0; i < packet_len; i++) {
-        packet p = packets[i];
-        marine_packet *pkt = marine_dissect_all_packet_fields((char *) p.data, p.header->len, encapsulation_type);
-        marine_packet_free(pkt);
-    }
-    clock_gettime(CLOCK_MONOTONIC_RAW, &end_time);
-    size_t memory_end = get_current_rss();
 
-    print_benchmark_results(start_time, end_time, memory_start, memory_end, packet_len);
+    for (int run = 0; run < BENCH_RUNS; run++) {
+        clock_gettime(CLOCK_MONOTONIC_RAW, &start_time);
+        for (int i = 0; i < packet_len; i++) {
+            packet p = packets[i];
+            marine_packet *pkt = marine_dissect_all_packet_fields((char *) p.data, p.header->len, encapsulation_type);
+            marine_packet_free(pkt);
+        }
+        clock_gettime(CLOCK_MONOTONIC_RAW, &end_time);
+        times[run] = (end_time.tv_sec - start_time.tv_sec) + ((end_time.tv_nsec - start_time.tv_nsec) * 1e-9);
+        printf("  run %d/%d: %f sec\n", run + 1, BENCH_RUNS, times[run]);
+    }
+
+    size_t memory_end = get_current_rss();
+    double avg_time = average_fastest_runs(times, BENCH_RUNS, BENCH_KEEP);
+    print_benchmark_results(avg_time, memory_start, memory_end, packet_len);
 }
 
 void run_dissect_packet_benchmarks(packet packets[], int packet_count, int encap_type) {
