@@ -300,14 +300,16 @@ marine_write_specified_fields(packet_filter *filter, epan_dissect_t *edt, char *
 
     proto_tree_children_foreach(edt->tree, proto_tree_get_node_field_values, &data);
 
-    GHashTable *used_macros = g_hash_table_new_full(g_int_hash, g_int_equal, g_free, NULL);
+    GHashTable *used_macros = NULL;
+    if (filter->macro_ids != NULL) {
+        used_macros = g_hash_table_new_full(g_int_hash, g_int_equal, g_free, NULL);
+    }
 
-    //char *output = (char *) g_malloc0(4096); // todo this can overflow
     int counter = 0;
     for (i = 0; i < fields->fields->len; ++i) {
         unsigned int fixed_index = filter->fixed_index_map[i];
 
-        if (filter->macro_ids != NULL && (g_hash_table_contains(used_macros, filter->macro_ids + i) || (g_ptr_array_len(fields->field_values[fixed_index]) == 0 && !filter->last_in_macro[i]))) {
+        if (used_macros != NULL && (g_hash_table_contains(used_macros, filter->macro_ids + i) || (g_ptr_array_len(fields->field_values[fixed_index]) == 0 && !filter->last_in_macro[i]))) {
             continue;
         }
 
@@ -326,7 +328,7 @@ marine_write_specified_fields(packet_filter *filter, epan_dissect_t *edt, char *
             }
             output[counter][offset] = '\0';
 
-            if (filter->macro_ids != NULL) {
+            if (used_macros != NULL) {
                 int *key = g_new(gint, 1);
                 *key = filter->macro_ids[i];
                 g_hash_table_add(used_macros, key);
@@ -348,7 +350,9 @@ marine_write_specified_fields(packet_filter *filter, epan_dissect_t *edt, char *
         }
     }
 
-    g_hash_table_destroy(used_macros);
+    if (used_macros != NULL) {
+        g_hash_table_destroy(used_macros);
+    }
 
     return output;
 }
