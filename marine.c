@@ -200,10 +200,6 @@ static void format_field_values(output_fields_t *fields, gpointer field_index, g
     /* Unwrap change made to disambiguiate zero / null */
     indx = GPOINTER_TO_UINT(field_index) - 1;
 
-    if (fields->field_values[indx] == NULL) {
-        fields->field_values[indx] = g_ptr_array_new();
-    }
-
     /* Essentially: fieldvalues[indx] is a 'GPtrArray *' with each array entry */
     /*  pointing to a string which is (part of) the final output string.       */
 
@@ -322,8 +318,12 @@ marine_write_specified_fields(packet_filter *filter, epan_dissect_t *edt, char *
     /*  Any and all 'GPtrArray *' are freed (after use) each     */
     /*   time (each packet) this function is invoked for a flle. */
     /* XXX: ToDo: use packet-scope'd memory & (if/when implemented) wmem ptr_array */
-    if (NULL == fields->field_values)
+    if (NULL == fields->field_values) {
         fields->field_values = g_new0(GPtrArray * , fields->fields->len);  /* free'd in output_fields_free() */
+        for (i = 0; i < fields->fields->len; i++) {
+            fields->field_values[i] = g_ptr_array_new();
+        }
+    }
 
     proto_tree_children_foreach(edt->tree, proto_tree_get_node_field_values, &data);
 
@@ -339,7 +339,7 @@ marine_write_specified_fields(packet_filter *filter, epan_dissect_t *edt, char *
             continue;
         }
 
-        if (NULL != fields->field_values[fixed_index]) {
+        if (g_ptr_array_len(fields->field_values[fixed_index]) > 0) {
             GPtrArray *fv_p;
             gsize j;
             fv_p = fields->field_values[fixed_index];
@@ -366,17 +366,13 @@ marine_write_specified_fields(packet_filter *filter, epan_dissect_t *edt, char *
     /* get ready for the next packet
      * This is done in a different loop as we use fixed_index and might go over the same field twice */
     for (i = 0; i < fields->fields->len; i++) {
-        if (NULL != fields->field_values[i]) {
-            GPtrArray *fv_p;
+        GPtrArray *fv_p = fields->field_values[i];
+        if (g_ptr_array_len(fv_p) > 0) {
             gsize j;
-            fv_p = fields->field_values[i];
-
             for (j = 0; j < g_ptr_array_len(fv_p); j++) {
                 g_free(g_ptr_array_index(fv_p, j));
             }
-
-            g_ptr_array_free(fv_p, TRUE);
-            fields->field_values[i] = NULL;
+            g_ptr_array_set_size(fv_p, 0);
         }
     }
 
