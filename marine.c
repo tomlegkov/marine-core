@@ -773,16 +773,15 @@ WS_DLL_PUBLIC int marine_add_filter(char *bpf, char *dfilter, char **fields, int
          * same_name_next links older→newer, so from the map entry we must
          * walk backward via same_name_prev_id to reach earlier registrations. */
         filter->hfid_array = g_array_new(FALSE, FALSE, sizeof(int));
-        filter->needs_visible_tree = FALSE;
         GHashTable *seen_hfids = g_hash_table_new(g_direct_hash, g_direct_equal);
         for (fi = 0; fi < packet_output_fields->fields->len; fi++) {
             gchar *field = (gchar *) g_ptr_array_index(packet_output_fields->fields, fi);
-            header_field_info *hfi = proto_registrar_get_byname(field);
-            /* Walk forward (same_name_next) and backward (same_name_prev_id).
+            header_field_info *head_hfi = proto_registrar_get_byname(field);
+            /* Walk forward via same_name_next, then backward via same_name_prev_id.
              * Check ALL hfinfos for rep-dependent types (FT_PROTOCOL, hf_text_only)
              * since different registrations of the same abbreviation can have
              * different types. */
-            for (; hfi != NULL; hfi = hfi->same_name_next) {
+            for (header_field_info *hfi = head_hfi; hfi != NULL; hfi = hfi->same_name_next) {
                 if (hfi->type == FT_PROTOCOL || hfi->id == hf_text_only)
                     filter->needs_visible_tree = TRUE;
                 if (!g_hash_table_contains(seen_hfids, GINT_TO_POINTER(hfi->id))) {
@@ -790,10 +789,10 @@ WS_DLL_PUBLIC int marine_add_filter(char *bpf, char *dfilter, char **fields, int
                     g_array_append_val(filter->hfid_array, hfi->id);
                 }
             }
-            /* Walk backward from the map entry via same_name_prev_id */
-            hfi = proto_registrar_get_byname(field);
-            while (hfi != NULL && hfi->same_name_prev_id != -1) {
+            for (header_field_info *hfi = head_hfi; hfi != NULL && hfi->same_name_prev_id != -1; ) {
                 header_field_info *prev_hfi = proto_registrar_get_nth(hfi->same_name_prev_id);
+                if (prev_hfi == NULL)
+                    break;
                 if (prev_hfi->type == FT_PROTOCOL || prev_hfi->id == hf_text_only)
                     filter->needs_visible_tree = TRUE;
                 if (!g_hash_table_contains(seen_hfids, GINT_TO_POINTER(prev_hfi->id))) {
@@ -810,7 +809,6 @@ WS_DLL_PUBLIC int marine_add_filter(char *bpf, char *dfilter, char **fields, int
     } else {
         filter->fixed_index_map = NULL;
         filter->hfid_array = NULL;
-        filter->needs_visible_tree = FALSE;
     }
     filter->expected_output_len = output_count;
     filter->wtap_encap = wtap_encap;
