@@ -143,6 +143,9 @@ typedef struct {
     output_fields_t *output_fields;
     int *macro_ids;
     gboolean *last_in_macro;
+    unsigned int *fixed_index_map;
+    GArray *hfid_array;
+    gboolean needs_visible_tree;
     unsigned int expected_output_len;
     int wtap_encap;
 } packet_filter;
@@ -200,13 +203,12 @@ static void format_field_values(output_fields_t *fields, gpointer field_index, g
     /* Unwrap change made to disambiguiate zero / null */
     indx = GPOINTER_TO_UINT(field_index) - 1;
 
-    if (fields->field_values[indx] == NULL) {
-        fields->field_values[indx] = g_ptr_array_new();
-    }
-
     /* Essentially: fieldvalues[indx] is a 'GPtrArray *' with each array entry */
     /*  pointing to a string which is (part of) the final output string.       */
 
+    if (fields->field_values[indx] == NULL) {
+        fields->field_values[indx] = g_ptr_array_new();
+    }
     fv_p = fields->field_values[indx];
 
     switch (fields->occurrence) {
@@ -242,7 +244,10 @@ static void format_field_values(output_fields_t *fields, gpointer field_index, g
                  * character as a separator between the previous element
                  * and this element.
                  */
-                g_ptr_array_add(fv_p, (gpointer) g_strdup_printf("%c", fields->aggregator));
+                gchar *agg = (gchar *) g_malloc(2);
+                agg[0] = fields->aggregator;
+                agg[1] = '\0';
+                g_ptr_array_add(fv_p, (gpointer) agg);
             }
             break;
         default:
@@ -278,15 +283,44 @@ static void proto_tree_get_node_field_values(proto_node *node, gpointer data) {
     }
 }
 
-gsize get_field_length(GPtrArray *field) {
-    gsize i;
-    gsize len = 1;
+/* Concatenate all parts in fv_p into a single g_malloc'd string. */
+static gchar *concat_field_parts(GPtrArray *fv_p) {
+    gsize j;
+    gsize num_parts = g_ptr_array_len(fv_p);
 
-    for (i = 0; i < g_ptr_array_len(field); i++) {
-        len += strlen((gchar *) g_ptr_array_index(field, i));
+    /* Single pass: compute total length */
+    gsize total_len = 0;
+    for (j = 0; j < num_parts; j++) {
+        total_len += strlen((gchar *) g_ptr_array_index(fv_p, j));
     }
 
-    return len;
+    /* Allocate and copy in one pass */
+    gchar *result = (gchar *) g_malloc(total_len + 1);
+    gsize offset = 0;
+    for (j = 0; j < num_parts; j++) {
+        gchar *str = (gchar *) g_ptr_array_index(fv_p, j);
+        gsize slen = strlen(str);
+        memcpy(result + offset, str, slen);
+        offset += slen;
+    }
+    result[offset] = '\0';
+    return result;
+}
+
+/*
+ * Free all reusable GPtrArrays in field_values. Called before output_fields_free
+ * because output_fields_free only frees the outer pointer array, not the
+ * individual GPtrArray instances that marine keeps alive across packets.
+ */
+static void free_field_value_arrays(output_fields_t *fields) {
+    if (!fields->field_values)
+        return;
+    for (unsigned int j = 0; j < fields->fields->len; j++) {
+        if (fields->field_values[j]) {
+            g_ptr_array_free(fields->field_values[j], TRUE);
+            fields->field_values[j] = NULL;
+        }
+    }
 }
 
 static char **
@@ -298,63 +332,28 @@ marine_write_specified_fields(packet_filter *filter, epan_dissect_t *edt, char *
     data.fields = fields;
     data.edt = edt;
 
-    if (NULL == fields->field_indicies) {
-        /* Prepare a lookup table from string abbreviation for field to its index. */
-        fields->field_indicies = g_hash_table_new(g_str_hash, g_str_equal);
-
-        i = 0;
-        while (i < fields->fields->len) {
-            gchar *field = (gchar *) g_ptr_array_index(fields->fields, i);
-            /* Store field indicies +1 so that zero is not a valid value,
-             * and can be distinguished from NULL as a pointer.
-             */
-            ++i;
-            g_hash_table_insert(fields->field_indicies, field, GUINT_TO_POINTER(i));
-        }
-    }
-
-    /* Array buffer to store values for this packet              */
-    /*  Allocate an array for the 'GPtrarray *' the first time   */
-    /*   ths function is invoked for a file;                     */
-    /*  Any and all 'GPtrArray *' are freed (after use) each     */
-    /*   time (each packet) this function is invoked for a flle. */
-    /* XXX: ToDo: use packet-scope'd memory & (if/when implemented) wmem ptr_array */
-    if (NULL == fields->field_values)
-        fields->field_values = g_new0(GPtrArray * , fields->fields->len);  /* free'd in output_fields_free() */
-
     proto_tree_children_foreach(edt->tree, proto_tree_get_node_field_values, &data);
 
-    GHashTable *used_macros = g_hash_table_new(g_int_hash, g_int_equal);
+    GHashTable *used_macros = NULL;
+    if (filter->macro_ids != NULL) {
+        used_macros = g_hash_table_new_full(g_int_hash, g_int_equal, g_free, NULL);
+    }
 
-    //char *output = (char *) g_malloc0(4096); // todo this can overflow
     int counter = 0;
     for (i = 0; i < fields->fields->len; ++i) {
-        gchar *field = (gchar *) g_ptr_array_index(fields->fields, i);
-        unsigned int fixed_index = GPOINTER_TO_UINT(g_hash_table_lookup(fields->field_indicies, field)) - 1;
+        unsigned int fixed_index = filter->fixed_index_map[i];
 
-        if (filter->macro_ids != NULL && (g_hash_table_contains(used_macros, filter->macro_ids + i) || (g_ptr_array_len(fields->field_values[fixed_index]) == 0 && !filter->last_in_macro[i]))) {
-            continue;
+        if (used_macros != NULL) {
+            gboolean macro_already_used = g_hash_table_contains(used_macros, filter->macro_ids + i);
+            gboolean field_empty_not_last = (fields->field_values[fixed_index] == NULL && !filter->last_in_macro[i]);
+            if (macro_already_used || field_empty_not_last)
+                continue;
         }
 
-        if (NULL != fields->field_values[fixed_index]) {
-            GPtrArray *fv_p;
-            gchar *str;
-            gsize j;
-            fv_p = fields->field_values[fixed_index];
-            output[counter] = (gchar *) g_malloc0(get_field_length(fv_p));
-            int field_counter = 0;
+        if (fields->field_values[fixed_index] != NULL && g_ptr_array_len(fields->field_values[fixed_index]) > 0) {
+            output[counter] = concat_field_parts(fields->field_values[fixed_index]);
 
-            /* Output the array of (partial) field values */
-            for (j = 0; j < g_ptr_array_len(fv_p); j++) {
-                str = (gchar *) g_ptr_array_index(fv_p, j);
-                for (char *p = str; *p != '\0'; p++) {
-                    output[counter][field_counter++] = *p;
-                }
-            }
-
-            output[counter][field_counter] = '\0';
-
-            if (filter->macro_ids != NULL) {
+            if (used_macros != NULL) {
                 int *key = g_new(gint, 1);
                 *key = filter->macro_ids[i];
                 g_hash_table_add(used_macros, key);
@@ -366,21 +365,19 @@ marine_write_specified_fields(packet_filter *filter, epan_dissect_t *edt, char *
     /* get ready for the next packet
      * This is done in a different loop as we use fixed_index and might go over the same field twice */
     for (i = 0; i < fields->fields->len; i++) {
-        if (NULL != fields->field_values[i]) {
-            GPtrArray *fv_p;
+        GPtrArray *fv_p = fields->field_values[i];
+        if (fv_p != NULL && g_ptr_array_len(fv_p) > 0) {
             gsize j;
-            fv_p = fields->field_values[i];
-
             for (j = 0; j < g_ptr_array_len(fv_p); j++) {
                 g_free(g_ptr_array_index(fv_p, j));
             }
-
-            g_ptr_array_free(fv_p, TRUE);
-            fields->field_values[i] = NULL;
+            g_ptr_array_set_size(fv_p, 0);
         }
     }
 
-    g_hash_table_destroy(used_macros);
+    if (used_macros != NULL) {
+        g_hash_table_destroy(used_macros);
+    }
 
     return output;
 }
@@ -419,60 +416,37 @@ static gboolean
 marine_process_packet(capture_file *cf, epan_dissect_t *edt, packet_filter *filter, Buffer *buf, wtap_rec *rec,
                       int len, char **output) {
     frame_data fdata;
-    column_info *cinfo;
-    gboolean passed;
+    gboolean passed = TRUE;
 
-    /* Count this packet. */
     cf->count++;
-
-    /* If we're not running a display filter and we're not printing any
-       packet information, we don't need to do a dissection. This means
-       that all packets can be marked as 'passed'. */
-    passed = TRUE;
     marine_frame_data_init(&fdata, cf->count, len);
 
-    /* If we're going to print packet information, or we're going to
-       run a read filter, or we're going to process taps, set up to
-       do a dissection and do so.  (This is the one and only pass
-       over the packets, so, if we'll be printing packet information
-       or running taps, we'll be doing it here.) */
-    if (edt) {
-        /* If we're running a filter, prime the epan_dissect_t with that
-           filter. */
-        if (filter->dfcode)
-            epan_dissect_prime_with_dfilter(edt, filter->dfcode);
+    if (filter->dfcode)
+        epan_dissect_prime_with_dfilter(edt, filter->dfcode);
 
-        /* This is the first and only pass, so prime the epan_dissect_t
-           with the hfids postdissectors want on the first pass. */
-        prime_epan_dissect_with_postdissector_wanted_hfids(edt);
+    if (filter->hfid_array != NULL)
+        epan_dissect_prime_with_hfid_array(edt, filter->hfid_array);
 
-        col_custom_prime_edt(edt, &cf->cinfo);
-        cinfo = NULL;
+    prime_epan_dissect_with_postdissector_wanted_hfids(edt);
+    col_custom_prime_edt(edt, &cf->cinfo);
 
-        //frame_data_set_before_dissect(&fdata, &cf->elapsed_time,
-        //                              &cf->provider.ref, cf->provider.prev_dis);
-        if (cf->provider.ref == &fdata) {
-            ref_frame = fdata;
-            cf->provider.ref = &ref_frame;
-        }
-
-        epan_dissect_run_with_taps(edt, cf->cd_t, rec,
-                                   frame_tvbuff_new_buffer(&cf->provider, &fdata, buf),
-                                   &fdata, cinfo);
-
-        /* Run the filter if we have it. */
-        if (filter->dfcode)
-            passed = dfilter_apply_edt(filter->dfcode, edt);
+    if (cf->provider.ref == &fdata) {
+        ref_frame = fdata;
+        cf->provider.ref = &ref_frame;
     }
+
+    epan_dissect_run_with_taps(edt, cf->cd_t, rec,
+                               frame_tvbuff_new_buffer(&cf->provider, &fdata, buf),
+                               &fdata, NULL);
+
+    if (filter->dfcode)
+        passed = dfilter_apply_edt(filter->dfcode, edt);
 
     if (passed) {
         frame_data_set_after_dissect(&fdata, &cum_bytes);
-        /* Process this packet. */
         if (filter->output_fields != NULL) {
             marine_write_specified_fields(filter, edt, output);
         }
-
-        /* this must be set after print_packet() [bug #8160] */
         prev_dis_frame = fdata;
         cf->provider.prev_dis = &prev_dis_frame;
     }
@@ -480,28 +454,36 @@ marine_process_packet(capture_file *cf, epan_dissect_t *edt, packet_filter *filt
     prev_cap_frame = fdata;
     cf->provider.prev_cap = &prev_cap_frame;
 
-    if (edt) {
-        epan_dissect_reset(edt);
-        frame_data_destroy(&fdata);
-    }
+    /* epan_dissect_reset leaves edt in a state safe for
+     * epan_dissect_cleanup (called in marine_inner_dissect_packet). */
+    epan_dissect_reset(edt);
+    frame_data_destroy(&fdata);
     return passed;
 }
 
+/*
+ * NOTE: marine is NOT thread-safe for concurrent dissection.
+ * hfinfo->ref_type (set by epan_dissect_prime_with_dfilter) is global state,
+ * not per-edt. Concurrent packets through different filters would race on
+ * ref_type. Multiple filters are safe only when used sequentially.
+ */
 static int
 marine_inner_dissect_packet(capture_file *cf, packet_filter *filter, const unsigned char *data, int len, char **output) {
     wtap_rec rec;
     Buffer buf;
-    epan_dissect_t *edt = NULL;
+    /* Guard against future Wireshark versions enlarging the struct beyond
+     * a safe stack frame size. If this fails, revert to heap allocation. */
+    G_STATIC_ASSERT(sizeof(epan_dissect_t) <= 4096);
+    epan_dissect_t edt;
 
     if (filter->has_bpf) {
-        struct pcap_pkthdr *hdr = (struct pcap_pkthdr *) malloc(sizeof(struct pcap_pkthdr));
-        hdr->len = len;
-        hdr->caplen = len;
-        if (!pcap_offline_filter(&filter->fcode, hdr, data)) {
-            free(hdr);
-            return 0;
+        struct pcap_pkthdr hdr = {
+            .len = len,
+            .caplen = len
+        };
+        if (!pcap_offline_filter(&filter->fcode, &hdr, data)) {
+            return FALSE;
         }
-        free(hdr);
         if (is_only_bpf(filter)) {
             return TRUE;
         }
@@ -514,36 +496,28 @@ marine_inner_dissect_packet(capture_file *cf, packet_filter *filter, const unsig
     memcpy(ws_buffer_start_ptr(&buf), data, len);
 
     // Fake the rec structure for internal dissection
-    (&rec)->rec_type = REC_TYPE_PACKET;
-    (&rec)->presence_flags = WTAP_HAS_CAP_LEN;
-    (&rec)->rec_header.packet_header.caplen = len;
-    (&rec)->rec_header.packet_header.len = len;
-    (&rec)->rec_header.packet_header.pkt_encap = filter->wtap_encap;
-    (&rec)->rec_header.ft_specific_header.record_len = len;
-    (&rec)->rec_header.ft_specific_header.record_type = len;
-    (&rec)->rec_header.syscall_header.record_type = len;
-    (&rec)->rec_header.syscall_header.byte_order = len;
+    rec.rec_type = REC_TYPE_PACKET;
+    rec.presence_flags = WTAP_HAS_CAP_LEN;
+    rec.rec_header.packet_header.caplen = len;
+    rec.rec_header.packet_header.len = len;
+    rec.rec_header.packet_header.pkt_encap = filter->wtap_encap;
+    rec.rec_header.ft_specific_header.record_len = len;
+    rec.rec_header.ft_specific_header.record_type = len;
+    rec.rec_header.syscall_header.record_type = len;
+    rec.rec_header.syscall_header.byte_order = len;
 
+    /* Use invisible tree when possible — primed fields get fvalues populated
+     * without full tree visibility. Fall back to visible for filters that
+     * request FT_PROTOCOL or hf_text_only fields (which need fi->rep). */
+    gboolean visible = filter->needs_visible_tree;
+    epan_dissect_init(&edt, cf->epan, TRUE, visible);
 
-    /* The protocol tree will be "visible", i.e., printed, only if we're
-       printing packet details, which is true if we're printing stuff
-       ("print_packet_info" is true) and we're in verbose mode
-       ("packet_details" is true). */
-    edt = epan_dissect_new(cf->epan, TRUE, TRUE);
+    reset_epan_mem(cf, &edt, TRUE, visible);
 
-    /*
-     * Force synchronous resolution of IP addresses; we're doing only
-     * one pass, so we can't do it in the background and fix up past
-     * dissections.
-     */
-    //set_resolution_synchrony(TRUE); // TODO can we remove c-ares?
+    int passed = marine_process_packet(cf, &edt, filter, &buf, &rec, len, output);
 
-    reset_epan_mem(cf, edt, 1, 1);
-
-    int passed = marine_process_packet(cf, edt, filter, &buf, &rec, len, output);
-
-    if (edt)
-        epan_dissect_free(edt);
+    /* Safe after epan_dissect_reset was called in marine_process_packet. */
+    epan_dissect_cleanup(&edt);
 
     ws_buffer_free(&buf);
     wtap_rec_cleanup(&rec);
@@ -653,7 +627,7 @@ WS_DLL_PUBLIC int validate_fields(char **fields, unsigned int fields_len, char *
 
 gboolean* last_seen(const int* arr, int len) {
     gboolean *ret_arr = g_new0(gboolean, len);
-    GHashTable *seen_values = g_hash_table_new(g_int_hash, g_int_equal);
+    GHashTable *seen_values = g_hash_table_new_full(g_int_hash, g_int_equal, g_free, NULL);
 
     for (int i = len - 1; i >= 0; i--) {
         if (!g_hash_table_contains(seen_values, (arr + i))) {
@@ -735,13 +709,79 @@ WS_DLL_PUBLIC int marine_add_filter(char *bpf, char *dfilter, char **fields, int
     int size = g_hash_table_size(packet_filters);
     int *key = g_new0(gint, 1);
     *key = size;
-    packet_filter *filter = (packet_filter *) malloc(sizeof(packet_filter));
+    packet_filter *filter = g_new0(packet_filter, 1);
     filter->has_bpf = has_bpf;
     filter->fcode = fcode;
     filter->dfcode = dfcode;
     filter->output_fields = packet_output_fields;
     filter->macro_ids = macro_indices_copy;
     filter->last_in_macro = last_in_macro;
+
+    /* Pre-compute field lookup structures at filter creation time. */
+    if (packet_output_fields != NULL) {
+        gsize fi;
+        /* Build string -> index lookup table */
+        packet_output_fields->field_indicies = g_hash_table_new(g_str_hash, g_str_equal);
+        fi = 0;
+        while (fi < packet_output_fields->fields->len) {
+            gchar *field = (gchar *) g_ptr_array_index(packet_output_fields->fields, fi);
+            ++fi;
+            g_hash_table_insert(packet_output_fields->field_indicies, field, GUINT_TO_POINTER(fi));
+        }
+
+        /* Pre-compute fixed_index mapping to avoid per-packet hash lookups.
+         * The hash round-trip is needed because duplicate field names may appear
+         * (g_hash_table_insert keeps the last value), causing multiple positions
+         * to alias the same underlying index. */
+        filter->fixed_index_map = (unsigned int *) g_malloc(sizeof(unsigned int) * packet_output_fields->fields->len);
+        for (fi = 0; fi < packet_output_fields->fields->len; fi++) {
+            gchar *field = (gchar *) g_ptr_array_index(packet_output_fields->fields, fi);
+            filter->fixed_index_map[fi] = GPOINTER_TO_UINT(g_hash_table_lookup(packet_output_fields->field_indicies, field)) - 1;
+        }
+
+        /* Build hfid array for priming. Walk both same_name_next (forward) and
+         * same_name_prev_id (backward) to cover all registrations sharing an
+         * abbreviation. gpa_name_map stores the LAST registered hfinfo, and
+         * same_name_next links older→newer, so from the map entry we must
+         * walk backward via same_name_prev_id to reach earlier registrations. */
+        filter->hfid_array = g_array_new(FALSE, FALSE, sizeof(int));
+        GHashTable *seen_hfids = g_hash_table_new(g_direct_hash, g_direct_equal);
+        for (fi = 0; fi < packet_output_fields->fields->len; fi++) {
+            gchar *field = (gchar *) g_ptr_array_index(packet_output_fields->fields, fi);
+            header_field_info *head_hfi = proto_registrar_get_byname(field);
+            /* Walk forward via same_name_next, then backward via same_name_prev_id.
+             * Check ALL hfinfos for rep-dependent types (FT_PROTOCOL, hf_text_only)
+             * since different registrations of the same abbreviation can have
+             * different types. */
+            for (header_field_info *hfi = head_hfi; hfi != NULL; hfi = hfi->same_name_next) {
+                if (hfi->type == FT_PROTOCOL || hfi->id == hf_text_only)
+                    filter->needs_visible_tree = TRUE;
+                if (!g_hash_table_contains(seen_hfids, GINT_TO_POINTER(hfi->id))) {
+                    g_hash_table_add(seen_hfids, GINT_TO_POINTER(hfi->id));
+                    g_array_append_val(filter->hfid_array, hfi->id);
+                }
+            }
+            for (header_field_info *hfi = head_hfi; hfi != NULL && hfi->same_name_prev_id != -1; ) {
+                header_field_info *prev_hfi = proto_registrar_get_nth(hfi->same_name_prev_id);
+                if (prev_hfi == NULL)
+                    break;
+                if (prev_hfi->type == FT_PROTOCOL || prev_hfi->id == hf_text_only)
+                    filter->needs_visible_tree = TRUE;
+                if (!g_hash_table_contains(seen_hfids, GINT_TO_POINTER(prev_hfi->id))) {
+                    g_hash_table_add(seen_hfids, GINT_TO_POINTER(prev_hfi->id));
+                    g_array_append_val(filter->hfid_array, prev_hfi->id);
+                }
+                hfi = prev_hfi;
+            }
+        }
+        g_hash_table_destroy(seen_hfids);
+
+        /* Allocate field_values pointer array (GPtrArrays created lazily per field) */
+        packet_output_fields->field_values = g_new0(GPtrArray *, packet_output_fields->fields->len);
+    } else {
+        filter->fixed_index_map = NULL;
+        filter->hfid_array = NULL;
+    }
     filter->expected_output_len = output_count;
     filter->wtap_encap = wtap_encap;
     g_hash_table_insert(packet_filters, key, filter);
@@ -941,15 +981,22 @@ WS_DLL_PUBLIC void destroy_marine(void) {
             dfilter_free(filter->dfcode);
         }
         if (filter->output_fields) {
+            free_field_value_arrays(filter->output_fields);
             output_fields_free(filter->output_fields);
         }
         if (filter->macro_ids) {
-            free(filter->macro_ids);
+            g_free(filter->macro_ids);
         }
         if (filter->last_in_macro) {
-            free(filter->last_in_macro);
+            g_free(filter->last_in_macro);
         }
-        free(filter);
+        if (filter->fixed_index_map) {
+            g_free(filter->fixed_index_map);
+        }
+        if (filter->hfid_array) {
+            g_array_free(filter->hfid_array, TRUE);
+        }
+        g_free(filter);
     }
 
     reset_tap_listeners();
@@ -971,10 +1018,10 @@ WS_DLL_PUBLIC void marine_free(marine_result *ptr) {
             unsigned int i;
             for (i = 0; i < ptr->len; i++) {
                 if (ptr->output[i]) {
-                    free(ptr->output[i]);    
+                    g_free(ptr->output[i]);
                 }
             }
-            free(ptr->output);
+            g_free(ptr->output);
         }
         free(ptr);
     }
@@ -1242,12 +1289,10 @@ static void marine_setup_wtap_rec(wtap_rec *rec, int len, int wtap_encap) {
 
 static epan_dissect_t *
 marine_epan_dissect_new(capture_file *cf) {
-    /* The protocol tree will be "visible", i.e., printed, only if we're
-       printing packet details, which is true if we're printing stuff
-       ("print_packet_info" is true) and we're in verbose mode
-       ("packet_details" is true). */
+    /* Full tree with visibility — used by marine_dissect_all_packet_fields
+     * which needs complete field details for proto tree extraction. */
     epan_dissect_t *edt = epan_dissect_new(cf->epan, TRUE, TRUE);
-    reset_epan_mem(cf, edt, 1, 1);
+    reset_epan_mem(cf, edt, TRUE, TRUE);
     return edt;
 }
 
@@ -1445,6 +1490,9 @@ static void reset_epan_mem(capture_file *cf, epan_dissect_t *edt, gboolean tree,
     epan_dissect_cleanup(edt);
     epan_free(cf->epan);
 
+    /* WARNING: output_fields and fixed_index_map on each packet_filter survive
+     * this reset. If output_fields is ever freed/recreated here,
+     * fixed_index_map must be invalidated (set to NULL). */
     cf->epan = marine_epan_new(cf);
     epan_dissect_init(edt, cf->epan, tree, visual);
     cf->count = 0;
