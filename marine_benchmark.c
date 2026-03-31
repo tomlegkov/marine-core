@@ -311,6 +311,82 @@ void validate_extraction(void) {
         set_epan_auto_reset_count(100000);
     }
 
+    /* --- 6. FT_PROTOCOL field triggers visible=TRUE fallback --- */
+    {
+        /* Requesting "ip" (FT_PROTOCOL) should trigger the fallback to
+         * visible=TRUE and still produce correct output. */
+        char *fields[] = { "ip", "ip.proto" };
+        int fid = marine_add_filter(NULL, NULL, fields, NULL, ARRAY_SIZE(fields), ETHERNET_ENCAP, &err_msg);
+        check(fid >= 0, "FT_PROTOCOL filter creation failed: %s", err_msg);
+
+        marine_result *r = marine_dissect_packet(fid, (unsigned char *)PKT_TCP, sizeof(PKT_TCP));
+        check(r->result == 1, "FT_PROTOCOL: packet did not pass");
+        check(r->len == 2, "FT_PROTOCOL: expected 2 slots, got %u", r->len);
+        /* ip (FT_PROTOCOL): should be non-NULL with full representation */
+        check(r->output[0] != NULL, "FT_PROTOCOL: 'ip' field is NULL");
+        check(strlen(r->output[0]) > 2,
+              "FT_PROTOCOL: 'ip' field too short (got '%s'), expected full representation", r->output[0]);
+        /* ip.proto should still work alongside FT_PROTOCOL field */
+        check(r->output[1] != NULL && strcmp(r->output[1], "6") == 0,
+              "FT_PROTOCOL: ip.proto expected '6', got '%s'", r->output[1] ? r->output[1] : "(null)");
+        marine_free(r);
+    }
+
+    /* --- 7. Macro-index grouping: first non-empty field in each group wins --- */
+    {
+        /* Fields: [tcp.srcport, udp.srcport, ip.proto]
+         * Macros:  [0,           0,           1      ]
+         * For TCP: tcp.srcport present → macro 0 outputs it, ip.proto → macro 1.
+         * For UDP (first dissection): tcp.srcport empty → falls through to udp.srcport.
+         * Output count = 2 (two distinct macro groups). */
+        char *fields[] = { "tcp.srcport", "udp.srcport", "ip.proto" };
+        int macro_ids[] = { 0, 0, 1 };
+        int fid = marine_add_filter(NULL, NULL, fields, macro_ids, ARRAY_SIZE(fields), ETHERNET_ENCAP, &err_msg);
+        check(fid >= 0, "Macro filter creation failed: %s", err_msg);
+
+        /* UDP first — tests fallthrough within a macro group */
+        marine_result *r1 = marine_dissect_packet(fid, (unsigned char *)PKT_UDP, sizeof(PKT_UDP));
+        check(r1->result == 1, "Macro UDP: packet did not pass");
+        check(r1->len == 2, "Macro UDP: expected 2 output slots, got %u", r1->len);
+        check(r1->output[0] != NULL && strcmp(r1->output[0], "4010") == 0,
+              "Macro UDP: slot 0 expected '4010' (udp.srcport), got '%s'", r1->output[0] ? r1->output[0] : "(null)");
+        check(r1->output[1] != NULL && strcmp(r1->output[1], "17") == 0,
+              "Macro UDP: slot 1 expected '17' (ip.proto), got '%s'", r1->output[1] ? r1->output[1] : "(null)");
+        marine_free(r1);
+
+        /* TCP second — tests first field in macro group matching directly */
+        marine_result *r2 = marine_dissect_packet(fid, (unsigned char *)PKT_TCP, sizeof(PKT_TCP));
+        check(r2->result == 1, "Macro TCP: packet did not pass");
+        check(r2->len == 2, "Macro TCP: expected 2 output slots, got %u", r2->len);
+        check(r2->output[0] != NULL && strcmp(r2->output[0], "4010") == 0,
+              "Macro TCP: slot 0 expected '4010' (tcp.srcport), got '%s'", r2->output[0] ? r2->output[0] : "(null)");
+        check(r2->output[1] != NULL && strcmp(r2->output[1], "6") == 0,
+              "Macro TCP: slot 1 expected '6' (ip.proto), got '%s'", r2->output[1] ? r2->output[1] : "(null)");
+        marine_free(r2);
+    }
+
+    /* --- 8. Multi-occurrence field with aggregation --- */
+    {
+        /* ip.host appears twice per packet (src + dst), aggregated with comma.
+         * For our TCP packet: src=88.44.85.145, dst=212.110.118.170 */
+        char *fields[] = { "ip.host" };
+        int fid = marine_add_filter(NULL, NULL, fields, NULL, ARRAY_SIZE(fields), ETHERNET_ENCAP, &err_msg);
+        check(fid >= 0, "Multi-occurrence filter creation failed: %s", err_msg);
+
+        marine_result *r = marine_dissect_packet(fid, (unsigned char *)PKT_TCP, sizeof(PKT_TCP));
+        check(r->result == 1, "Multi-occurrence: packet did not pass");
+        check(r->len == 1, "Multi-occurrence: expected 1 slot, got %u", r->len);
+        check(r->output[0] != NULL, "Multi-occurrence: ip.host is NULL");
+        /* Should contain both IPs comma-separated (occurrence='a', aggregator=',') */
+        check(strstr(r->output[0], "88.44.85.145") != NULL,
+              "Multi-occurrence: missing src IP in '%s'", r->output[0]);
+        check(strstr(r->output[0], "212.110.118.170") != NULL,
+              "Multi-occurrence: missing dst IP in '%s'", r->output[0]);
+        check(strstr(r->output[0], ",") != NULL,
+              "Multi-occurrence: missing comma aggregator in '%s'", r->output[0]);
+        marine_free(r);
+    }
+
     printf("All sanity checks passed.\n\n");
 }
 
