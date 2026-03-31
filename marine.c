@@ -416,63 +416,37 @@ static gboolean
 marine_process_packet(capture_file *cf, epan_dissect_t *edt, packet_filter *filter, Buffer *buf, wtap_rec *rec,
                       int len, char **output) {
     frame_data fdata;
-    column_info *cinfo;
-    gboolean passed;
+    gboolean passed = TRUE;
 
-    /* Count this packet. */
     cf->count++;
-
-    /* If we're not running a display filter and we're not printing any
-       packet information, we don't need to do a dissection. This means
-       that all packets can be marked as 'passed'. */
-    passed = TRUE;
     marine_frame_data_init(&fdata, cf->count, len);
 
-    /* If we're going to print packet information, or we're going to
-       run a read filter, or we're going to process taps, set up to
-       do a dissection and do so.  (This is the one and only pass
-       over the packets, so, if we'll be printing packet information
-       or running taps, we'll be doing it here.) */
-    if (edt) {
-        /* If we're running a filter, prime the epan_dissect_t with that
-           filter. */
-        if (filter->dfcode)
-            epan_dissect_prime_with_dfilter(edt, filter->dfcode);
+    if (filter->dfcode)
+        epan_dissect_prime_with_dfilter(edt, filter->dfcode);
 
-        if (filter->hfid_array != NULL)
-            epan_dissect_prime_with_hfid_array(edt, filter->hfid_array);
+    if (filter->hfid_array != NULL)
+        epan_dissect_prime_with_hfid_array(edt, filter->hfid_array);
 
-        /* This is the first and only pass, so prime the epan_dissect_t
-           with the hfids postdissectors want on the first pass. */
-        prime_epan_dissect_with_postdissector_wanted_hfids(edt);
+    prime_epan_dissect_with_postdissector_wanted_hfids(edt);
+    col_custom_prime_edt(edt, &cf->cinfo);
 
-        col_custom_prime_edt(edt, &cf->cinfo);
-        cinfo = NULL;
-
-        //frame_data_set_before_dissect(&fdata, &cf->elapsed_time,
-        //                              &cf->provider.ref, cf->provider.prev_dis);
-        if (cf->provider.ref == &fdata) {
-            ref_frame = fdata;
-            cf->provider.ref = &ref_frame;
-        }
-
-        epan_dissect_run_with_taps(edt, cf->cd_t, rec,
-                                   frame_tvbuff_new_buffer(&cf->provider, &fdata, buf),
-                                   &fdata, cinfo);
-
-        /* Run the filter if we have it. */
-        if (filter->dfcode)
-            passed = dfilter_apply_edt(filter->dfcode, edt);
+    if (cf->provider.ref == &fdata) {
+        ref_frame = fdata;
+        cf->provider.ref = &ref_frame;
     }
+
+    epan_dissect_run_with_taps(edt, cf->cd_t, rec,
+                               frame_tvbuff_new_buffer(&cf->provider, &fdata, buf),
+                               &fdata, NULL);
+
+    if (filter->dfcode)
+        passed = dfilter_apply_edt(filter->dfcode, edt);
 
     if (passed) {
         frame_data_set_after_dissect(&fdata, &cum_bytes);
-        /* Process this packet. */
         if (filter->output_fields != NULL) {
             marine_write_specified_fields(filter, edt, output);
         }
-
-        /* this must be set after print_packet() [bug #8160] */
         prev_dis_frame = fdata;
         cf->provider.prev_dis = &prev_dis_frame;
     }
@@ -480,12 +454,10 @@ marine_process_packet(capture_file *cf, epan_dissect_t *edt, packet_filter *filt
     prev_cap_frame = fdata;
     cf->provider.prev_cap = &prev_cap_frame;
 
-    if (edt) {
-        /* epan_dissect_reset leaves edt in a state safe for
-         * epan_dissect_cleanup (called in marine_inner_dissect_packet). */
-        epan_dissect_reset(edt);
-        frame_data_destroy(&fdata);
-    }
+    /* epan_dissect_reset leaves edt in a state safe for
+     * epan_dissect_cleanup (called in marine_inner_dissect_packet). */
+    epan_dissect_reset(edt);
+    frame_data_destroy(&fdata);
     return passed;
 }
 
